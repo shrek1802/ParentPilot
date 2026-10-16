@@ -10,6 +10,8 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -29,6 +31,9 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var foundList: LinearLayout
     private lateinit var remoteInput: EditText
+    private lateinit var localInput: EditText
+    private val handler = Handler(Looper.getMainLooper())
+    private var scanSequence = 0
     private lateinit var manager: NsdManager
     private var multicast: WifiManager.MulticastLock? = null
     private var discovery: NsdManager.DiscoveryListener? = null
@@ -51,10 +56,33 @@ class MainActivity : Activity() {
         })
         root.addView(text("ParentPilot", 26f))
         root.addView(text("Find your child's laptop on the same Wi-Fi, or use a saved private remote address.", 15f))
-        status = text("Not scanning", 15f).also { root.addView(it) }
+        status = text("Tap Find nearby laptop to scan your Wi-Fi.", 15f).also { root.addView(it) }
         button(root, "Find nearby laptop") { scanWithPermission() }
         foundList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(foundList)
+        root.addView(text("Connect directly on your Wi-Fi", 20f))
+        root.addView(text("If discovery finds nothing, enter the local IP address shown by the laptop (for example 192.168.1.249).", 14f))
+        localInput = EditText(this).apply {
+            hint = "192.168.1.249"
+            setSingleLine(true)
+            setText(pref.getString("local_ip", ""))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        root.addView(localInput, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        button(root, "Save and open local laptop") {
+            val input = localInput.text.toString().trim()
+            val url = privateWifiUrl(input)
+            if (url == null) status.text = "Enter a private Wi-Fi IPv4 address, such as 192.168.1.249."
+            else {
+                pref.edit().putString("local_ip", Uri.parse(url).host).apply()
+                status.text = "Opening laptop in browser…"
+                openBrowser(url)
+            }
+        }
+        button(root, "Open saved local laptop") {
+            val url = privateWifiUrl(pref.getString("local_ip", "") ?: "")
+            if (url != null) openBrowser(url) else status.text = "Save your laptop's Wi-Fi address first."
+        }
         root.addView(text("Away from home", 20f))
         root.addView(text("Connect both devices to Tailscale. Paste the private HTTPS .ts.net address once, then open it with one tap.", 14f))
         remoteInput = EditText(this).apply {
@@ -94,8 +122,10 @@ class MainActivity : Activity() {
     }
 
     private fun scanWithPermission() {
+        status.text = "Starting Wi-Fi search…"
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+            status.text = "Please allow Nearby devices permission to scan."
             requestPermissions(arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES), 91)
         } else startDiscovery()
     }
@@ -111,11 +141,20 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     private fun startDiscovery() {
         stopDiscovery()
+        val currentScan = ++scanSequence
         found.clear()
         foundList.removeAllViews()
-        val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
-        multicast = wifi.createMulticastLock("family-control-mdns").apply { setReferenceCounted(false); acquire() }
-        status.text = "Looking for ParentPilot on your Wi-Fi…"
+        try {
+            val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+            multicast = wifi.createMulticastLock("parentpilot-mdns").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (_: Exception) {
+            status.text = "Cannot start Wi-Fi discovery. Check app permissions, or use direct connection below."
+            return
+        }
+        status.text = "Looking for ParentPilot on the same Wi-Fi…"
         discovery = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) { runOnUiThread { status.text = "Scanning local Wi-Fi…" } }
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
@@ -130,6 +169,7 @@ class MainActivity : Activity() {
             }
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (!serviceInfo.serviceType.contains("_maxfamily._tcp")) return
+                runOnUiThread { status.text = "Found a laptop announcement; getting its address…" }
                 // Deprecated resolveService is used for compatibility with Android 8–14.
                 try {
                     manager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
@@ -139,7 +179,11 @@ class MainActivity : Activity() {
                         override fun onServiceResolved(info: NsdServiceInfo) {
                             val address = info.host?.let { host ->
                                 if (host is Inet4Address) host.hostAddress else null
-                            } ?: return
+                            }
+                            if (address == null) {
+                                runOnUiThread { status.text = "Laptop found but no IPv4 address returned. Use the direct Wi-Fi address." }
+                                return
+                            }
                             if (info.port !in 1..65535) return
                             // Host IP supplied by mDNS; login happens in the device's browser.
                             found[info.serviceName] = info.serviceName to "https://$address:${info.port}/"
@@ -154,9 +198,31 @@ class MainActivity : Activity() {
         try {
             manager.discoverServices("_maxfamily._tcp.", NsdManager.PROTOCOL_DNS_SD, discovery)
         } catch (_: Exception) {
-            status.text = "Wi-Fi discovery unavailable. Use a saved private address instead."
+            status.text = "Wi-Fi discovery unavailable. Enter the laptop IP address below."
             stopDiscovery()
+            return
         }
+        handler.postDelayed({
+            if (scanSequence == currentScan && found.isEmpty()) {
+                status.text = "No laptop found after 12 seconds. Check that the laptop's Avahi discovery service is enabled and both devices are on the same Wi-Fi. You can use direct connection below."
+            }
+        }, 12_000L)
+    }
+
+    private fun privateWifiUrl(raw: String): String? {
+        val input = raw.trim().removePrefix("https://")
+        val host = input.substringBefore("/").substringBefore(":")
+        val port = input.substringBefore("/").substringAfter(":", "8743")
+        if (port != "8743") return null
+        val parts = host.split(".")
+        if (parts.size != 4) return null
+        val values = parts.map { it.toIntOrNull() ?: return null }
+        if (values.any { it !in 0..255 }) return null
+        val allowed = values[0] == 10 ||
+            (values[0] == 172 && values[1] in 16..31) ||
+            (values[0] == 192 && values[1] == 168)
+        if (!allowed) return null
+        return "https://$host:8743/"
     }
 
     private fun refreshList() {
@@ -179,10 +245,11 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION")
     private fun stopDiscovery() {
+        scanSequence++
         discovery?.let { listener -> try { manager.stopServiceDiscovery(listener) } catch (_: Exception) {} }
         discovery = null
         try { multicast?.release() } catch (_: Exception) {}
         multicast = null
     }
-    override fun onDestroy() { stopDiscovery(); super.onDestroy() }
+    override fun onDestroy() { stopDiscovery(); handler.removeCallbacksAndMessages(null); super.onDestroy() }
 }
