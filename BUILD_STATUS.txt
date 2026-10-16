@@ -1,0 +1,11 @@
+Family Control reusable prototype source status
+============================================
+Linux server/PIN/timer: Python syntax + included server tests: PASSED
+Dynamic child display name and seconds: PASSED
+Installer: bash syntax checked, NOT installed on a clean Mint machine
+Android: Kotlin source created; NOT compiled or run (Android SDK is not installed here)
+Remote Tailscale: configuration script included, NOT activated or tested
+The existing working Max laptop has NOT been changed.
+Use the GitHub-ready ZIP for source review/development, not a public release or unsupervised child-safety guarantee.
+
+ParentPilot branding integrated into Linux parental overlay, HTTPS dashboard and Android launcher.

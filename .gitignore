@@ -1,0 +1,19 @@
+# Android builds / local caches
+.gradle/
+.idea/
+**/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+local.properties
+# Python caches
+__pycache__/
+*.py[cod]
+# Never commit real parent authentication or laptop state
+config.json
+state.json
+server.key
+server.crt
+desktop-token
+.env

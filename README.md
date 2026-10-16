@@ -1,19 +1,92 @@
 # ParentPilot — Family Screen Time Control
 
-![ParentPilot](assets/parentpilot-logo.svg)
+![ParentPilot logo](assets/parentpilot-logo.png)
 
-ParentPilot is an experimental screen-time controller for Linux Mint XFCE with an Android companion for local Wi-Fi discovery and an optional private Tailscale connection.
+**Linux Mint XFCE + Android** · Branded developer preview
 
-**Status: developer preview, not an enforcement-grade parental lock.** The Linux app can be bypassed by a sufficiently technical user. The Android companion source is not yet a signed or tested release APK.
+ParentPilot is a parental screen-time timer for a **Linux Mint XFCE** laptop, with a mobile-friendly parent dashboard and an Android companion that can **find laptops on the same Wi-Fi** automatically. The project started as a personalised setup for Max but this repository's fresh-install branch allows a parent to choose **any child display name and Linux username**.
 
-The project was developed for a child account on Linux Mint, with configurable child display name and username, parent-approved extra time, daily allowances, paused screen and a mobile parent dashboard.
+> **Important:** This is a developer preview, not a certified or tamper-resistant parental-control product. A technically knowledgeable user can bypass the XFCE popup. Use supervision and appropriate Linux permissions. No remote public port forwarding is necessary or recommended.
 
-## Layout
+## Branding
 
-- `desktop/`: Python timer service, web dashboard, child overlay, installer, and tests.
-- `android-app/`: Android Studio companion for Wi-Fi discovery and launching the parent dashboard.
-- `assets/`: shared app artwork.
+The app uses the generated **ParentPilot family-and-clock emblem** in its Linux fullscreen parental approval page, parent web login/dashboard, Android launcher icon and Android discovery screen. `assets/` contains the original transparent wordmark and icon; `desktop/assets/` contains the runtime copies. Internal legacy file/service names are intentionally kept for upgrades.
 
-**Please don't run the fresh installer on an existing working setup.** The original Max laptop uses customised v0.2.2 and should only be upgraded after a backup and compatibility test.
+## Who installs what?
 
-See `desktop/README.md` for setup instructions when available.
+| Component | Location | What it does |
+| --- | --- | --- |
+| `desktop/install.sh` | Linux Mint XFCE computer | Sets up account, background timer, local PIN and web dashboard |
+| `desktop/enable-discovery-existing.sh` | Existing *working* ParentPilot computer | Adds Avahi/mDNS Wi-Fi discovery only; does not touch timer or PIN |
+| `android-app/` | Android Studio project | Discovers nearby laptop via mDNS, then opens its HTTPS control panel in the **phone's browser** |
+| `desktop/remote-setup.sh` | Laptop (optional) | Tailscale Serve: private HTTPS address for use outside the local Wi-Fi |
+
+**What the Android app does today:** finds and remembers the laptop address, opens the existing PIN-protected web dashboard. It is a native *companion/launcher*, not a fully native dashboard. It doesn't save the PIN. Native Pause/Resume buttons can be added after safe pairing and device-authentication design.
+
+### Using it at the caravan
+
+- If **Mum, the laptop and phone are on the same caravan Wi-Fi or hotspot**, press **Find nearby laptop**. Discovery requires the network to permit multicast/mDNS between devices. Some guest networks and hotspots isolate clients.
+- If **Mum is somewhere else and the laptop is on another network**, local auto-scanning cannot find it. Install Tailscale on both devices, sign into the same private tailnet and set up Tailscale Serve on the laptop. Save the private `https://...ts.net` address in the Android app. Mum can then open it anywhere the laptop is online.
+- Never forward TCP 8743 publicly, enable Tailscale Funnel, or disable the firewall to force connectivity.
+
+## Fresh laptop setup
+
+**DO NOT RUN `--install` on Max's working laptop.** It is designed for first installs and deliberately refuses to overwrite an existing `/etc/max-family-control/config.json` or `/opt/max-family-control/control_server.py`.
+
+On Linux Mint XFCE, install prerequisites via Mint's Software Manager or:
+
+```bash
+sudo apt update
+sudo apt install python3 python3-tk openssl acl avahi-daemon
+```
+
+Then from the extracted `desktop` directory:
+
+```bash
+bash install.sh --check
+sudo bash install.sh --install
+```
+
+The installer asks for:
+
+1. Child's display name (for example, `Ellie`).
+2. Standard Linux username (for example, `ellie`) — reuse an existing non-admin user or create one.
+3. A **six-digit parent PIN**, separate from the child Linux password.
+4. Optional LightDM autologin for that child.
+
+The services and files use their legacy internal `max-family-control` names to retain compatibility; the user-facing project is **ParentPilot**. A new child account has its own Linux password and is **not** made an administrator. An installer is a privileged script: review it and use it only on systems you control.
+
+### Existing working laptop: add Wi-Fi discovery only
+
+```bash
+sudo bash desktop/enable-discovery-existing.sh
+```
+
+This creates an Avahi `_maxfamily._tcp` record for port 8743. It does **not** reinstall the timer, change the PIN, reset allowances or alter logins. It is the only included script intended for the current working Max laptop.
+
+## Android app (source, not compiled APK)
+
+Open the `android-app` folder in Android Studio with Android SDK Platform 35 and JDK 17. Sync Gradle and build a debug APK using **Build > Build Bundle(s) / APK(s) > Build APK(s)**. The APK is not compiled in this release because this build environment does not have the Android SDK. The source still needs testing on real Android phones, Android 14–16 discovery permissions and varied Wi-Fi routers.
+
+The app uses `NsdManager` service discovery for `_maxfamily._tcp.` on local networks. Tapping a result opens the default browser at the discovered laptop's `https://<IP>:8743/`. The current local server uses a self-signed TLS certificate, so the browser may display a warning. Check that you have selected **your own laptop** before trusting a local certificate. The app does not disable HTTPS certificate verification. For Tailscale, use the private `.ts.net` HTTPS hostname with a publicly trusted Tailscale Serve certificate.
+
+## Safety, security and privacy
+
+- Six-digit PIN is salted and hashed in a root/service-owned config file; do not upload any real config, private keys, tokens or timer state to GitHub.
+- Desktop API requires a separate local desktop token, but that token is readable by the child's own Linux account, so a capable local user could bypass the graphical restrictions.
+- Parent web operations require a PIN-authenticated session and CSRF token; five failed attempts temporarily block new attempts.
+- Device discovery is unauthenticated mDNS. It locates an **advertised** laptop; it does not prove the broadcaster is trustworthy. HTTPS and parent PIN still matter.
+- The app works over home Wi-Fi; across networks it requires a VPN such as Tailscale. **There is no public internet server in this project.**
+- A parent device joining the same Tailscale account can reach other allowed tailnet devices; review Tailscale device approvals and permissions.
+- The app should be audited before any public or Play Store release; do not treat this prototype as a commercial child-safety product.
+
+## What isn't done yet?
+
+- Android APK compilation and device verification
+- A proper signed device pairing flow and native dashboard controls
+- Production-grade OS-enforced lockout
+- Installer testing on clean Mint laptops, and automatic upgrade support for the currently customised Max installation
+
+## Publishing
+
+This source can be placed in **one GitHub repository** containing `desktop/` and `android-app/`. The `LICENSE.txt` currently uses MIT. Before releasing publicly, review licensing/attribution, perform security testing and consider publishing prebuilt signed APKs via GitHub Releases (not by committing a signing key).
