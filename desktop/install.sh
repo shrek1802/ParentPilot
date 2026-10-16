@@ -17,7 +17,7 @@ check(){
     command -v "$bin" >/dev/null || die "$bin missing. Install dependency and retry."
   done
   python3 -c 'import tkinter' || die 'Missing python3-tk (sudo apt install python3-tk)'
-  [[ -r "$BASE/control_server.py" && -r "$BASE/max_desktop.py" ]] || die 'Extract the whole package first.'
+  [[ -r "$BASE/control_server.py" && -r "$BASE/max_desktop.py" && -r "$BASE/parentpilot_lock_media.py" ]] || die 'Extract the whole package first.'
   if [[ -e "$CFG/config.json" || -e "$TARGET/control_server.py" ]]; then
     die 'An existing installation was found. Refusing to overwrite an existing child, PIN or saved time.'
   fi
@@ -95,7 +95,7 @@ install_new(){
   for img in parentpilot-icon.png parentpilot-icon-128.png parentpilot-icon-64.png; do
     install -o root -g root -m 0644 "$BASE/assets/$img" "$TARGET/assets/$img"
   done
-  for f in control_server.py max_desktop.py max_desktop_supervisor.py admin.py; do
+  for f in control_server.py max_desktop.py max_desktop_supervisor.py parentpilot_lock_media.py admin.py; do
     install -o root -g root -m 0644 "$BASE/$f" "$TARGET/$f"
   done
   install -d -o root -g maxfamily -m 0750 "$CFG"
