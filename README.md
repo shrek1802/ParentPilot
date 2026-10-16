@@ -64,9 +64,9 @@ sudo bash desktop/enable-discovery-existing.sh
 
 This creates an Avahi `_maxfamily._tcp` record for port 8743. It does **not** reinstall the timer, change the PIN, reset allowances or alter logins. It is the only included script intended for the current working Max laptop.
 
-## Android app (source, not compiled APK)
+## Android app (debug APK available)
 
-Open the `android-app` folder in Android Studio with Android SDK Platform 35 and JDK 17. Sync Gradle and build a debug APK using **Build > Build Bundle(s) / APK(s) > Build APK(s)**. The APK is not compiled in this release because this build environment does not have the Android SDK. The source still needs testing on real Android phones, Android 14–16 discovery permissions and varied Wi-Fi routers.
+The Android companion now **compiles successfully** in GitHub Actions. Download the installable test APK from the latest successful [Android build](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml) under **Artifacts → ParentPilot-Android-debug-APK**. Extract the artifact ZIP to get `app-debug.apk`. See [ANDROID_INSTALL.md](ANDROID_INSTALL.md) for installation and device setup. This is a debug build, not a Play Store/release-signed version; real-device testing on Android 14–16 and varied Wi-Fi routers is still required.
 
 The app uses `NsdManager` service discovery for `_maxfamily._tcp.` on local networks. Tapping a result opens the default browser at the discovered laptop's `https://<IP>:8743/`. The current local server uses a self-signed TLS certificate, so the browser may display a warning. Check that you have selected **your own laptop** before trusting a local certificate. The app does not disable HTTPS certificate verification. For Tailscale, use the private `.ts.net` HTTPS hostname with a publicly trusted Tailscale Serve certificate.
 
@@ -82,7 +82,7 @@ The app uses `NsdManager` service discovery for `_maxfamily._tcp.` on local netw
 
 ## What isn't done yet?
 
-- Android APK compilation and device verification
+- Android device verification (debug APK compilation succeeded; production signing and real-device tests pending)
 - A proper signed device pairing flow and native dashboard controls
 - Production-grade OS-enforced lockout
 - Installer testing on clean Mint laptops, and automatic upgrade support for the currently customised Max installation
