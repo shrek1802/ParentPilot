@@ -11,8 +11,8 @@ android {
         applicationId = "uk.familycontrol.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.3-preview"
+        versionCode = 2
+        versionName = "0.3.1-preview"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
