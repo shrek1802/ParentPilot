@@ -29,6 +29,14 @@ The app uses the generated **ParentPilot family-and-clock emblem** in its Linux 
 - If **Mum is somewhere else and the laptop is on another network**, local auto-scanning cannot find it. Install Tailscale on both devices, sign into the same private tailnet and set up Tailscale Serve on the laptop. Save the private `https://...ts.net` address in the Android app. Mum can then open it anywhere the laptop is online.
 - Never forward TCP 8743 publicly, enable Tailscale Funnel, or disable the firewall to force connectivity.
 
+## New: branded Linux Mint .deb installer
+
+A fresh-install **ParentPilot v0.4.0 Preview 1** Debian package now builds from source using [GitHub Actions](https://github.com/shrek1802/ParentPilot/actions/workflows/build-linux-deb.yml). Open the most recent successful run and download the **ParentPilot-Linux-Mint-DEB** artifact, then extract the `.deb` file.
+
+Install with Linux Mint's package installer (or `sudo apt install ./parentpilot_0.4.0~preview1_all.deb`), then open **ParentPilot Family Setup** from the Mint application menu. The branded four-step wizard guides the parent through the child's display name, new Linux user/password, separate six-digit parent PIN, YouTube Kids or supervised mode, optional Netflix, Chromium family filtering and automatic login. The child gets a curated XFCE bottom panel and ParentPilot's tested single-window X11 lock, video-window covering and audio mute. The laptop advertises itself over Avahi for Android phone discovery.
+
+**This package is for a NEW child account on a fresh Mint XFCE installation, not an in-place update. Do not try it on Max's existing working laptop.** It refuses to overwrite an existing ParentPilot/Max Family Control installation. Installation and offline tests pass, but complete provisioning and DRM playback have not yet been tested on a separate real Mint machine. ParentPilot does not select YouTube Kids maturity bands or Netflix Kids profiles for you; a parent must configure those inside the services. Menu hiding is cosmetic and the X11 overlay is not tamper-proof. Details and source: [packaging/README.md](packaging/README.md).
+
 ## Fresh laptop setup
 
 **DO NOT RUN `--install` on Max's working laptop.** It is designed for first installs and deliberately refuses to overwrite an existing `/etc/max-family-control/config.json` or `/opt/max-family-control/control_server.py`.
