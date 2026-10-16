@@ -141,11 +141,20 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     private fun startDiscovery() {
         stopDiscovery()
+        val currentScan = ++scanSequence
         found.clear()
         foundList.removeAllViews()
-        val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
-        multicast = wifi.createMulticastLock("family-control-mdns").apply { setReferenceCounted(false); acquire() }
-        status.text = "Looking for ParentPilot on your Wi-Fi…"
+        try {
+            val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+            multicast = wifi.createMulticastLock("parentpilot-mdns").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (_: Exception) {
+            status.text = "Cannot start Wi-Fi discovery. Check app permissions, or use direct connection below."
+            return
+        }
+        status.text = "Looking for ParentPilot on the same Wi-Fi…"
         discovery = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) { runOnUiThread { status.text = "Scanning local Wi-Fi…" } }
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
@@ -160,6 +169,7 @@ class MainActivity : Activity() {
             }
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (!serviceInfo.serviceType.contains("_maxfamily._tcp")) return
+                runOnUiThread { status.text = "Found a laptop announcement; getting its address…" }
                 // Deprecated resolveService is used for compatibility with Android 8–14.
                 try {
                     manager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
@@ -169,7 +179,11 @@ class MainActivity : Activity() {
                         override fun onServiceResolved(info: NsdServiceInfo) {
                             val address = info.host?.let { host ->
                                 if (host is Inet4Address) host.hostAddress else null
-                            } ?: return
+                            }
+                            if (address == null) {
+                                runOnUiThread { status.text = "Laptop found but no IPv4 address returned. Use the direct Wi-Fi address." }
+                                return
+                            }
                             if (info.port !in 1..65535) return
                             // Host IP supplied by mDNS; login happens in the device's browser.
                             found[info.serviceName] = info.serviceName to "https://$address:${info.port}/"
@@ -184,9 +198,31 @@ class MainActivity : Activity() {
         try {
             manager.discoverServices("_maxfamily._tcp.", NsdManager.PROTOCOL_DNS_SD, discovery)
         } catch (_: Exception) {
-            status.text = "Wi-Fi discovery unavailable. Use a saved private address instead."
+            status.text = "Wi-Fi discovery unavailable. Enter the laptop IP address below."
             stopDiscovery()
+            return
         }
+        handler.postDelayed({
+            if (scanSequence == currentScan && found.isEmpty()) {
+                status.text = "No laptop found after 12 seconds. Check that the laptop's Avahi discovery service is enabled and both devices are on the same Wi-Fi. You can use direct connection below."
+            }
+        }, 12_000L)
+    }
+
+    private fun privateWifiUrl(raw: String): String? {
+        val input = raw.trim().removePrefix("https://")
+        val host = input.substringBefore("/").substringBefore(":")
+        val port = input.substringBefore("/").substringAfter(":", "8743")
+        if (port != "8743") return null
+        val parts = host.split(".")
+        if (parts.size != 4) return null
+        val values = parts.map { it.toIntOrNull() ?: return null }
+        if (values.any { it !in 0..255 }) return null
+        val allowed = values[0] == 10 ||
+            (values[0] == 172 && values[1] in 16..31) ||
+            (values[0] == 192 && values[1] == 168)
+        if (!allowed) return null
+        return "https://$host:8743/"
     }
 
     private fun refreshList() {
@@ -209,10 +245,11 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION")
     private fun stopDiscovery() {
+        scanSequence++
         discovery?.let { listener -> try { manager.stopServiceDiscovery(listener) } catch (_: Exception) {} }
         discovery = null
         try { multicast?.release() } catch (_: Exception) {}
         multicast = null
     }
-    override fun onDestroy() { stopDiscovery(); super.onDestroy() }
+    override fun onDestroy() { stopDiscovery(); handler.removeCallbacksAndMessages(null); super.onDestroy() }
 }
