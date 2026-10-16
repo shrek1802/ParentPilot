@@ -1,0 +1,49 @@
+name: Build ParentPilot Linux Mint DEB
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'packaging/**'
+      - '.github/workflows/build-linux-deb.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'packaging/**'
+      - '.github/workflows/build-linux-deb.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python and installer
+        run: |
+          python3 packaging/test_installer.py
+          python3 -m compileall -q desktop packaging/parentpilot
+          bash -n packaging/build-deb.sh
+      - name: Test parent timer and PIN API
+        run: python3 test_server.py
+        working-directory: desktop
+      - name: Build Debian package
+        run: bash packaging/build-deb.sh "$GITHUB_WORKSPACE/dist"
+      - name: Inspect package and protect maintainer scripts
+        run: |
+          test -s dist/parentpilot_0.4.0~preview1_all.deb
+          dpkg-deb --info dist/parentpilot_0.4.0~preview1_all.deb
+          dpkg-deb --contents dist/parentpilot_0.4.0~preview1_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
+          dpkg-deb --contents dist/parentpilot_0.4.0~preview1_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+      - name: Upload ParentPilot installable DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParentPilot-Linux-Mint-DEB-v0.4.0-preview1
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 30
