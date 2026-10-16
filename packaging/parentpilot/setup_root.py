@@ -78,7 +78,11 @@ def make_desktop(path, name, exec_cmd, icon, comment):
 
 def prop(parent, name, typ=None, value=None):
     attrs={'name':name}
-    if typ is not None: attrs.update({'type':typ,'value':str(value)})
+    if typ is not None:
+        attrs['type'] = typ
+        # XFCE's xfconf serialisation omits value for array and empty nodes.
+        if typ not in ('array', 'empty') and value is not None:
+            attrs['value'] = str(value)
     return ET.SubElement(parent,'property',attrs)
 
 
