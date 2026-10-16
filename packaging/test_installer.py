@@ -30,6 +30,7 @@ with tempfile.TemporaryDirectory() as d:
     m.write_child_panel(home,1000,netflix=True)
     x=ET.parse(home/'.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
     assert x.getroot().attrib['name']=='xfce4-panel'
+    assert all('value' not in elem.attrib for elem in x.findall(".//property[@type='array']")+x.findall(".//property[@type='empty']"))
     assert list((home/'.config/xfce4/panel').glob('launcher-*/**/*.desktop'))
 import py_compile
 for py in [R/'parentpilot/wizard.py',R/'parentpilot/setup_root.py',R.parent/'desktop/max_desktop.py',R.parent/'desktop/parentpilot_lock_media.py']:
