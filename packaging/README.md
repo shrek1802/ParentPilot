@@ -29,3 +29,7 @@ Uninstalling the package does **not** remove a child account, PIN state, autolog
 ## Build from source
 
 From the repository root: `bash packaging/build-deb.sh`. Requires `dpkg-deb` (provided by `dpkg`). Run `python3 desktop/test_server.py` and `python3 packaging/test_installer.py` for smoke tests.
+
+## CI verification
+
+The GitHub workflow runs the local timer, PIN API, installer validation, package inspection, and publishes a downloadable `.deb` artifact. It cannot verify login-session integration on a physical Mint XFCE machine.
