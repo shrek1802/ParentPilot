@@ -3,6 +3,10 @@ package uk.familycontrol.remote
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.nsd.NsdManager
@@ -19,6 +23,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import java.net.Inet4Address
 import java.util.concurrent.ConcurrentHashMap
 
@@ -32,6 +37,7 @@ class MainActivity : Activity() {
     private lateinit var foundList: LinearLayout
     private lateinit var remoteInput: EditText
     private lateinit var localInput: EditText
+    private lateinit var localStatus: TextView
     private val handler = Handler(Looper.getMainLooper())
     private var scanSequence = 0
     private lateinit var manager: NsdManager
@@ -69,19 +75,21 @@ class MainActivity : Activity() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
         }
         root.addView(localInput, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        localStatus = text("A discovered laptop will appear here automatically.", 14f).also { root.addView(it) }
         button(root, "Save and open local laptop") {
             val input = localInput.text.toString().trim()
-            val url = privateWifiUrl(input)
-            if (url == null) status.text = "Enter a private Wi-Fi IPv4 address, such as 192.168.1.249."
-            else {
-                pref.edit().putString("local_ip", Uri.parse(url).host).apply()
-                status.text = "Opening laptop in browser…"
+            val fallback = if (input.isEmpty() && found.size == 1) found.values.firstOrNull()?.second else null
+            val url = privateWifiUrl(input.ifEmpty { fallback.orEmpty() })
+            if (url == null) {
+                showLocalMessage("Enter a laptop IP address, or tap its discovered result above.")
+            } else {
+                saveLocalAddress(url)
                 openBrowser(url)
             }
         }
         button(root, "Open saved local laptop") {
             val url = privateWifiUrl(pref.getString("local_ip", "") ?: "")
-            if (url != null) openBrowser(url) else status.text = "Save your laptop's Wi-Fi address first."
+            if (url != null) openBrowser(url) else showLocalMessage("No saved address yet. Scan or enter the laptop IP first.")
         }
         root.addView(text("Away from home", 20f))
         root.addView(text("Connect both devices to Tailscale. Paste the private HTTPS .ts.net address once, then open it with one tap.", 14f))
@@ -228,9 +236,38 @@ class MainActivity : Activity() {
     private fun refreshList() {
         foundList.removeAllViews()
         status.text = if (found.isEmpty()) "Looking for ParentPilot…" else "Found ${found.size} laptop(s)"
-        found.values.sortedBy { it.first }.forEach { (label, url) ->
-            button(foundList, "Open $label") { openBrowser(url) }
+        val results = found.values.sortedBy { it.first }
+        if (results.size == 1) {
+            val url = privateWifiUrl(results[0].second)
+            if (url != null) {
+                val host = Uri.parse(url).host.orEmpty()
+                localInput.setText(host)
+                localStatus.text = "Found ${results[0].first} at $host. Tap Open below or Save and open local laptop."
+            }
         }
+        results.forEach { (label, rawUrl) ->
+            val url = privateWifiUrl(rawUrl)
+            if (url != null) {
+                val host = Uri.parse(url).host.orEmpty()
+                button(foundList, "Open $label ($host)") {
+                    localInput.setText(host)
+                    saveLocalAddress(url)
+                    openBrowser(url)
+                }
+            }
+        }
+    }
+
+    private fun showLocalMessage(message: String) {
+        status.text = message
+        localStatus.text = message
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun saveLocalAddress(url: String) {
+        val ip = Uri.parse(url).host.orEmpty()
+        pref.edit().putString("local_ip", ip).apply()
+        localStatus.text = "Saved $ip. Opening parental dashboard in your browser…"
     }
 
     private fun isSafeHttpsUrl(value: String): Boolean = try {
@@ -240,7 +277,25 @@ class MainActivity : Activity() {
     } catch (_: Exception) { false }
 
     private fun openBrowser(url: String) {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addCategory(Intent.CATEGORY_BROWSABLE) })
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+            }
+            startActivity(intent)
+            status.text = "Opening parental dashboard in your browser…"
+        } catch (e: ActivityNotFoundException) {
+            copyFailedLink(url)
+        } catch (e: SecurityException) {
+            copyFailedLink(url)
+        } catch (e: Exception) {
+            copyFailedLink(url)
+        }
+    }
+
+    private fun copyFailedLink(url: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("ParentPilot dashboard", url))
+        showLocalMessage("Couldn't open a browser. Address copied — paste it into Chrome.")
     }
 
     @Suppress("DEPRECATION")
