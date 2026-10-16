@@ -3,6 +3,7 @@
 Best-effort graphical restriction. It is NOT a cryptographic or kernel-level kiosk.
 """
 import json
+from parentpilot_lock_media import LockGuard
 from pathlib import Path
 import ssl
 import subprocess
@@ -62,6 +63,7 @@ class MaxUI:
         self.last_allowed = False
         self.last_state = None
         self.offline = False
+        self.guard = LockGuard()
         self.root.after(100, self.refresh)
         self.root.mainloop()
 
@@ -86,12 +88,14 @@ class MaxUI:
 
     def create_overlay(self):
         self.overlay = tk.Toplevel(self.root)
+        self.overlay.withdraw()  # Build controls offscreen first. One cover, no blank curtain.
+        self.overlay.overrideredirect(True)
         self.overlay.title('ParentPilot — time is up')
         self.overlay.configure(bg=BG)
-        self.overlay.attributes('-fullscreen', True)
+        self.overlay.geometry(f'{self.overlay.winfo_screenwidth()}x{self.overlay.winfo_screenheight()}+0+0')
         self.overlay.attributes('-topmost', True)
         self.overlay.protocol('WM_DELETE_WINDOW', lambda: None)
-        # XFCE manages fullscreen; no override-redirect.
+        # Single-window override-redirect overlays XFCE panels without a second mask.
         self.overlay.bind('<Escape>', lambda _: 'break')
         self.overlay.bind('<Alt-F4>', lambda _: 'break')
 
@@ -124,6 +128,7 @@ class MaxUI:
         bottom.pack(pady=(23, 0))
         tk.Button(bottom, text='Switch user', command=self.switch_user, bg='#334155', fg=WHITE, font=('Sans', 11), padx=12, pady=8, borderwidth=0).pack(side='left', padx=10)
         tk.Button(bottom, text='Shut down', command=self.shutdown, bg='#334155', fg=WHITE, font=('Sans', 11), padx=12, pady=8, borderwidth=0).pack(side='left', padx=10)
+        self.overlay.deiconify()
         self.overlay.lift()
         # Focus PIN field once; avoid stealing focus on every timer refresh.
         self.overlay.after(150, lambda: self.password.focus_force() if self.password.winfo_exists() else None)
@@ -166,6 +171,7 @@ class MaxUI:
             self.msg.configure(text='Shut down from the system power menu instead.')
 
     def hide_overlay(self):
+        self.guard.release()
         if self.overlay is not None:
             self.overlay.destroy()
             self.overlay = None
@@ -196,7 +202,8 @@ class MaxUI:
             else:
                 self.title_label.configure(text='Time to take a break')
                 self.description.configure(text='Your time is up. Ask Mum or Dad if you can have some more time.')
-            # Do not re-raise the window each refresh: it steals keyboard focus in XFCE.
+            # The parent PIN controls are in THIS foreground window, not behind an extra mask.
+            self.guard.enforce(self.overlay)
         self.last_state = state
         # Refresh once per second during the final minute, otherwise every 2s.
         # Server is authoritative; the overlay appears when it reports expiry.
