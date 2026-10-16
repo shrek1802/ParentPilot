@@ -10,6 +10,8 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -29,6 +31,9 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var foundList: LinearLayout
     private lateinit var remoteInput: EditText
+    private lateinit var localInput: EditText
+    private val handler = Handler(Looper.getMainLooper())
+    private var scanSequence = 0
     private lateinit var manager: NsdManager
     private var multicast: WifiManager.MulticastLock? = null
     private var discovery: NsdManager.DiscoveryListener? = null
@@ -51,10 +56,33 @@ class MainActivity : Activity() {
         })
         root.addView(text("ParentPilot", 26f))
         root.addView(text("Find your child's laptop on the same Wi-Fi, or use a saved private remote address.", 15f))
-        status = text("Not scanning", 15f).also { root.addView(it) }
+        status = text("Tap Find nearby laptop to scan your Wi-Fi.", 15f).also { root.addView(it) }
         button(root, "Find nearby laptop") { scanWithPermission() }
         foundList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(foundList)
+        root.addView(text("Connect directly on your Wi-Fi", 20f))
+        root.addView(text("If discovery finds nothing, enter the local IP address shown by the laptop (for example 192.168.1.249).", 14f))
+        localInput = EditText(this).apply {
+            hint = "192.168.1.249"
+            setSingleLine(true)
+            setText(pref.getString("local_ip", ""))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        root.addView(localInput, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        button(root, "Save and open local laptop") {
+            val input = localInput.text.toString().trim()
+            val url = privateWifiUrl(input)
+            if (url == null) status.text = "Enter a private Wi-Fi IPv4 address, such as 192.168.1.249."
+            else {
+                pref.edit().putString("local_ip", Uri.parse(url).host).apply()
+                status.text = "Opening laptop in browser…"
+                openBrowser(url)
+            }
+        }
+        button(root, "Open saved local laptop") {
+            val url = privateWifiUrl(pref.getString("local_ip", "") ?: "")
+            if (url != null) openBrowser(url) else status.text = "Save your laptop's Wi-Fi address first."
+        }
         root.addView(text("Away from home", 20f))
         root.addView(text("Connect both devices to Tailscale. Paste the private HTTPS .ts.net address once, then open it with one tap.", 14f))
         remoteInput = EditText(this).apply {
@@ -94,8 +122,10 @@ class MainActivity : Activity() {
     }
 
     private fun scanWithPermission() {
+        status.text = "Starting Wi-Fi search…"
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+            status.text = "Please allow Nearby devices permission to scan."
             requestPermissions(arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES), 91)
         } else startDiscovery()
     }
