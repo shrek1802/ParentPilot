@@ -35,3 +35,11 @@ For the **direct Wi-Fi fallback**, enter only the laptop's current private IPv4 
 If Android doesn't grant discovery permissions, open **Settings → Apps → ParentPilot → Permissions** and allow the nearby-device permission, when available. Check both are on the same local network (not an isolated guest Wi-Fi). Some phone hotspot and caravan Wi-Fi systems block multicast or client-to-client traffic. If the IP address changes, update the saved address.
 
 **Upgrading test APKs:** These are debug builds. On some phones a later build cannot replace an older APK because the debug signing key differs. If Android reports a signature/package conflict, uninstall only the old **ParentPilot Android app** and install the new APK. This doesn't touch the laptop timer, although you'll need to re-enter the saved phone connection details.
+
+## Android v0.3.3 — discovered laptop connection fix
+
+When **Find nearby laptop** finds one laptop, its private IPv4 address now fills the **Connect directly on your Wi-Fi** field automatically. Select **Open [laptop name] (IP)** in the search results to save its IP and open the existing HTTPS parent dashboard directly, or use **Save and open local laptop** below. You no longer have to type a found IP manually.
+
+Input problems now display immediately beside the connection button and as an Android notification-style message. If Android can't start a browser, the app copies the laptop's HTTPS URL so it can be pasted into Chrome. The parent PIN is never stored by the Android companion.
+
+If a v0.3.2 test build won't accept v0.3.3 as an in-place update, uninstall only the Android app and install the new APK; the laptop's timer and PIN will be unaffected. Real-phone behaviour still requires testing.
