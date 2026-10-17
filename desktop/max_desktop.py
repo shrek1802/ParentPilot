@@ -64,6 +64,9 @@ class MaxUI:
         self.last_state = None
         self.offline = False
         self.guard = LockGuard()
+        self.screen_prompt = None
+        self.screen_notice = None
+        self.seen_screen_requests = set()
         self.root.after(100, self.refresh)
         self.root.mainloop()
 
@@ -176,6 +179,73 @@ class MaxUI:
             self.overlay.destroy()
             self.overlay = None
 
+    def screen_decision(self, request_id, allow=False):
+        if self.screen_prompt is not None:
+            self.screen_prompt.destroy()
+            self.screen_prompt = None
+        if not allow:
+            body = urllib.parse.urlencode({'request': request_id}).encode('utf8')
+            req = urllib.request.Request(ENDPOINT + '/api/screen/decline', data=body,
+                headers={'Content-Type': 'application/x-www-form-urlencoded', **desktop_headers()})
+            try:
+                urllib.request.urlopen(req, timeout=3, context=TLS).close()
+            except (OSError, urllib.error.URLError):
+                pass
+            return
+        # Give the permission dialog time to disappear from the screenshot.
+        self.root.after(500, lambda: self.share_one_screen(request_id))
+
+    def share_one_screen(self, request_id):
+        try:
+            from screen_view import capture_jpeg
+            picture = capture_jpeg()
+            req = urllib.request.Request(ENDPOINT + '/api/screen/upload',
+                data=picture, method='POST',
+                headers={'Content-Type': 'image/jpeg',
+                         'X-ParentPilot-Screen-Request': request_id,
+                         **desktop_headers()})
+            with urllib.request.urlopen(req, timeout=8, context=TLS) as resp:
+                if resp.status != 200:
+                    raise RuntimeError('ParentPilot could not deliver the preview.')
+            self.screen_notice = tk.Toplevel(self.root)
+            self.screen_notice.overrideredirect(True)
+            self.screen_notice.attributes('-topmost', True)
+            self.screen_notice.configure(bg='#14532d', padx=14, pady=10)
+            tk.Label(self.screen_notice,
+                text='ParentPilot: one screen picture was shared with your parent',
+                bg='#14532d', fg=WHITE, font=('Sans', 10, 'bold')).pack()
+            self.screen_notice.geometry('+25+25')
+            notice = self.screen_notice
+            notice.after(15000, lambda: notice.destroy() if notice.winfo_exists() else None)
+        except Exception as exc:
+            # Never retry capture silently. A fresh request needs fresh consent.
+            from tkinter import messagebox
+            messagebox.showwarning('Screen preview not shared',
+                'ParentPilot could not share the picture. ' + str(exc))
+
+    def ask_screen_permission(self, request_id):
+        if self.screen_prompt is not None or not request_id:
+            return
+        prompt = tk.Toplevel(self.root)
+        self.screen_prompt = prompt
+        prompt.title('ParentPilot — screen preview')
+        prompt.configure(bg=PANEL, padx=24, pady=20)
+        prompt.attributes('-topmost', True)
+        prompt.geometry('490x265')
+        tk.Label(prompt, text='Your parent has requested a screen picture',
+                 bg=PANEL, fg=WHITE, font=('Sans', 15, 'bold'), wraplength=430).pack(pady=(0, 14))
+        tk.Label(prompt, text='You choose whether to share ONE picture of your screen now. '
+                 'This is not a live video or a recording. No picture will be taken if you decline.',
+                 bg=PANEL, fg=MUTED, wraplength=430, justify='left').pack(pady=(0, 18))
+        tk.Button(prompt, text='Share one picture', bg=ACCENT, fg=BG,
+                  command=lambda: self.screen_decision(request_id, True)).pack(fill='x', pady=4)
+        tk.Button(prompt, text='No thanks', bg='#475569', fg=WHITE,
+                  command=lambda: self.screen_decision(request_id, False)).pack(fill='x', pady=4)
+        prompt.protocol('WM_DELETE_WINDOW', lambda: self.screen_decision(request_id, False))
+        prompt.after(28000, lambda: self.screen_decision(request_id, False)
+                     if self.screen_prompt is prompt and prompt.winfo_exists() else None)
+        prompt.lift()
+
     def refresh(self):
         try:
             state = request_state()
@@ -205,6 +275,11 @@ class MaxUI:
             # The parent PIN controls are in THIS foreground window, not behind an extra mask.
             self.guard.enforce(self.overlay)
         self.last_state = state
+        if state is not None and state.get('allowed') and state.get('screen_enabled'):
+            request_id = state.get('screen_request', '')
+            if request_id and request_id not in self.seen_screen_requests:
+                self.seen_screen_requests.add(request_id)
+                self.ask_screen_permission(request_id)
         # Refresh once per second during the final minute, otherwise every 2s.
         # Server is authoritative; the overlay appears when it reports expiry.
         short_countdown = (state is not None and state.get('allowed')
