@@ -149,7 +149,7 @@ class Control:
                 self.screen_request = ''
                 return True
             if not (128 <= len(image) <= MAX_SCREEN_BYTES and
-                    image[:3] == b'\\xff\\xd8\\xff' and image[-2:] == b'\\xff\\xd9'):
+                    image[:3] == b'\xff\xd8\xff' and image[-2:] == b'\xff\xd9'):
                 return False
             self.screen_image = image
             self.screen_image_until = time.monotonic() + 30
