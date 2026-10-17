@@ -29,5 +29,10 @@ assert not pre.report(os_release={'ID':'fedora'},which=which,environ=x11,exists=
 assert not pre.report(os_release=versions[0],which=lambda n:None,environ=x11,exists=exists)['compatible']
 assert not pre.report(os_release=versions[0],which=which,environ=x11,
                       exists=lambda p: p=='/etc/max-family-control/config.json')['compatible']
+# Debian's non-root PATH sometimes omits /usr/sbin, including chpasswd and avahi.
+only_normal_path=lambda name: '/usr/bin/'+name if name not in ('chpasswd','adduser','avahi-daemon','lightdm') and name in programs else None
+with_sbin=lambda path: path in ('/run/systemd/system','/usr/sbin/chpasswd','/usr/sbin/adduser','/usr/sbin/avahi-daemon','/usr/sbin/lightdm')
+report_sbin=pre.report(os_release=versions[0],which=only_normal_path,environ=x11,exists=with_sbin)
+assert report_sbin['compatible'] and report_sbin['lightdm'],report_sbin
 assert pre.debian_family(pre.parse_os_release('ID=linuxmint\nID_LIKE="ubuntu debian"\n'))
 print('PASS: Debian-family/XFCE/X11 checks and safe refusal for Wayland, GNOME, existing installs, missing tools')
