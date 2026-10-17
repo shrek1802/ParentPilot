@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.4.0~preview1
+VERSION=0.5.0~preview2
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -13,9 +13,10 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: all
-Depends: \${misc:Depends}, python3, python3-tk, python3-gi, openssl, acl, chromium, avahi-daemon, xfce4-session, xfce4-panel, lightdm, pkexec, playerctl, pulseaudio-utils, dbus-x11
+Depends: \${misc:Depends}, python3, python3-tk, python3-gi, openssl, acl, chromium | chromium-browser, avahi-daemon, xfce4-session, xfce4-panel, pkexec, playerctl, pulseaudio-utils, dbus-x11, libx11-6
+Suggests: lightdm
 Maintainer: ParentPilot Project <parentpilot@example.invalid>
-Description: ParentPilot family screen-time setup for Linux Mint XFCE
+Description: ParentPilot family screen-time setup for Debian-family XFCE/X11
  Guided graphical setup creates a non-admin child account, parent PIN,
  screen-time timer, local phone controls, and a curated child desktop.
  Installs no child account or timer until an administrator finishes the wizard.
@@ -32,6 +33,7 @@ install -m 0644 "$ROOT/desktop/assets/parentpilot-icon-128.png" "$STAGING/usr/sh
 install -m 0644 "$ROOT/packaging/parentpilot/youtube.svg" "$STAGING/usr/lib/parentpilot/icons/youtube.svg"
 install -m 0644 "$ROOT/packaging/parentpilot/netflix.svg" "$STAGING/usr/lib/parentpilot/icons/netflix.svg"
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
+install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
 install -m 0755 "$ROOT/packaging/parentpilot/setup_root.py" "$STAGING/usr/lib/parentpilot/setup-root"
 cat > "$STAGING/usr/bin/parentpilot-setup" <<'EOF'
 #!/bin/sh
@@ -66,7 +68,7 @@ set -e
 # NEVER provision the child from dpkg's root, non-graphical context.
 # The wizard gets explicit consent and PolicyKit auth instead.
 if [ "$1" = configure ]; then
-    echo 'ParentPilot installed. Open "ParentPilot Family Setup" in the Mint menu to create a child account.'
+    echo 'ParentPilot installed. Open "ParentPilot Family Setup" from the applications menu to create a child account.'
 fi
 exit 0
 EOF
