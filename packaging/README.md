@@ -1,51 +1,58 @@
-# ParentPilot 0.5 Preview 2 — family setup installer
+# ParentPilot Debian-family XFCE/X11 .deb (v0.5 preview)
 
-**This is a fresh-install testing preview for Debian-family Linux with XFCE on X11**, not a universal Debian package or an upgrade for a configured Max Family Control installation.
+A fresh-install **developer preview** for XFCE on X11 on Linux Mint, Debian and Ubuntu-based Linux. It is not yet a universal Debian-family parental-control app.
 
-## What happens for parents
+## What happens
 
-1. Download the `.deb` and double-click it to install its required packages.
-2. Open **ParentPilot Family Setup** from the applications menu. On a fresh administrator XFCE login, the setup wizard can also offer to start.
-3. The first screen checks the operating system, desktop, Chromium, account tools and installed services. Unsupported environments stop **before** creating an account.
-4. Enter a child's name, review the suggested login name, choose a child account password and a separate six-digit **parent PIN**.
-5. Choose **YouTube Kids** or a supervised YouTube shortcut, optional **Netflix** (Kids profile required), the Chromium family-filter policy and optional **LightDM** auto-login.
-6. Review and confirm; approve the administrator authentication request. Only then will the wizard create the non-admin child account, child's XFCE shortcuts/panel, the timer service, and Avahi discovery for the Android companion.
+1. Install the `.deb` through Mint's package installer (APT resolves dependencies).
+2. Launch **ParentPilot Family Setup** from the Mint app menu. The wizard also offers to open when an administrator next logs into XFCE; it does not run for non-admin users.
+3. Fill in the child name, separate Linux username/password, six-digit parent PIN, YouTube Kids vs supervised YouTube, Netflix shortcut, auto login and optional Chromium policy.
+4. Authenticate with your normal administrator password when asked by PolicyKit. The separate setup helper creates the non-admin account and configures the child environment. No administrator password is stored by ParentPilot.
+5. The child account starts with the ParentPilot screen-time limit **paused** until the parent grants time through the HTTPS dashboard. Avahi broadcasts `_maxfamily._tcp` so the Android companion can discover it on the same Wi-Fi.
 
-The timer is paused at first. The parent grants time from the phone or PIN. The child gets a simplified bottom bar with Chromium, YouTube, Files, Netflix if selected, and the clock/status area.
+## Child desktop
 
-## Compatibility
+- Curated bottom XFCE panel (Files, child Chromium, YouTube Kids/supervised YouTube and optional Netflix, plus clock and status icons)
+- Dedicated Chromium app-style launchers for YouTube and Netflix
+- Family-oriented Chromium enterprise policies: family Cloudflare DoH, Google SafeSearch, YouTube Restricted Mode; Kids choice additionally blocks normal YouTube domains
+- Hides a shortlist of advanced package-management, terminal and other-browser **menu icons in the CHILD account only**; does not delete applications or alter the parent's XFCE panel
+- Uses existing, tested single-window ParentPilot PIN screen + audio mute and media pause helper for X11
+
+**Important:** The family-filter Chromium policy is system-wide for the Chromium application (not Google Chrome). Hiding icons is cosmetic and does **not** prevent a technically capable child from running software, using alternative browsers or bypassing an X11 overlay. YouTube maturity levels must be set up separately with YouTube Kids or Family Link. Netflix needs a Kids profile and adult PINs configured on Netflix itself, and DRM playback may need Widevine or a different supported browser. ParentPilot does not bypass Netflix or Widevine licensing.
+
+## Safety
+
+The package's post-install script creates **no accounts** and never overwrites `/opt/max-family-control` or `/etc/max-family-control`. The wizard's privileged helper refuses to run if an existing ParentPilot/Max Family Control installation is found. **Do not install this fresh-setup package on Max's currently working laptop**, even though package installation itself won't overwrite the configured files. Until tested on a separate computer/VM, treat this as a development preview.
+
+Uninstalling the package does **not** remove a child account, PIN state, autologin, Chromium policy or the running timer service: it intentionally preserves user data. A future explicit uninstall/repair wizard is required for complete cleanup.
+
+## Build from source
+
+From the repository root: `bash packaging/build-deb.sh`. Requires `dpkg-deb` (provided by `dpkg`). Run `python3 desktop/test_server.py` and `python3 packaging/test_installer.py` for smoke tests.
+
+## Wider Debian compatibility (v0.5)
+
+The installer has an **automatic platform check on its Welcome page** before it requests passwords. The parent sees the detected Linux distribution, desktop/display session and understandable blockers before creating a child account. The elevated setup helper repeats the package/system checks; it never blindly installs on a different distribution.
 
 | Environment | Status |
-|---|---|
-| Linux Mint XFCE on X11 | Intended primary target; full v0.5 installer not yet tested on a physical laptop |
-| Debian 11–13 XFCE on X11 | Candidate; offline checks pass; real installation not yet tested |
-| Ubuntu 22.04/24.04/26.04 with XFCE on X11 | Candidate; offline checks pass; real installation not yet tested |
-| MX Linux on XFCE/X11 with systemd | Candidate; distro detected; real installation not yet tested |
-| Cinnamon, GNOME, KDE, LXQt, MATE, Wayland | **Not supported by this lock-window implementation** |
-| Old distributions with Python below 3.9 | Not supported |
+| --- | --- |
+| Linux Mint 21/22 XFCE **on X11** | Target; previously validated on one Dell with local v0.2 patches; v0.5 fresh install not device-tested |
+| Debian 12/13 **XFCE on X11, systemd** | Installer detects compatible components; live install **not yet tested** |
+| Xubuntu / Ubuntu **XFCE on X11, systemd** | Installer detects compatible components; live install **not yet tested** |
+| Other Debian-based XFCE/X11 desktops | Experimental; wizard warns if the distribution is not in the main three |
+| Debian 11 or older / Python 3.9 or older | **Not supported** by this build |
+| GNOME, KDE, Cinnamon, MATE, LXQt | **Not supported** by the current XFCE overlay/panel integration |
+| Wayland sessions | **Not supported**: X11 stacking and window controls may not work |
+| Distros without systemd | **Not supported**: the service setup uses systemd |
 
-Being Debian-based **does not mean** the screen-time lock works with every desktop. This edition checks XFCE/X11 and refuses an existing `/etc/max-family-control` or `/opt/max-family-control` installation instead of overwriting it.
+The package installs core requirements; it recommends Chromium and audio helpers. It **does not silently change the system's desktop or display manager**. If XFCE, Chromium, Polkit/`pkexec`, or (when selecting automatic login) LightDM are missing, the wizard explains that setup is not ready. A real cross-desktop version would need separate lock/panel integrations and testing for GNOME/KDE/Wayland.
 
-## Safety and child filtering
+## Important for parents
 
-- The package's post-installation script creates **no Linux accounts or service settings**. Only the wizard, after explicit confirmation and parent administrator authentication, provisions the child.
-- Child launcher hiding is cosmetic, **not application security**. A capable local user can bypass a best-effort X11 overlay. This is not a hardened kiosk.
-- The optional Chromium policy affects **every Chromium user on the computer**, including the parent. Verify it in `chrome://policy`. Snap Chromium on Ubuntu may behave differently.
-- YouTube maturity settings must be set on the **YouTube Kids/Google account**. Netflix Kids/adult PIN setup must be performed within Netflix. Widevine DRM is not installed or circumvented.
-- Avahi `_maxfamily._tcp` announces the laptop locally; the Android app finds it on the same Wi-Fi when the router allows mDNS. Do not expose parental port 8743 directly to the internet.
-- **LightDM is optional**; without it, do not select automatic child login. Other display managers are not automatically reconfigured.
-- Removing the `.deb` preserves existing child data; a fully guided repair/uninstall wizard is still planned. Failure part-way through provisioning can leave a partially created child account.
-- The optional **View Child's Screen** idea is **not in Preview 2** and needs a secure parent-only, child-visible implementation.
+1. Install on a **spare, newly set-up** XFCE/X11 machine first, not a laptop whose ParentPilot timer already works.
+2. Open **ParentPilot Family Setup** from the application menu; the wizard checks compatibility on the first page.
+3. Choose a child name and separate Linux login details, followed by the private parent PIN. Finish with normal administrator authorisation.
+4. Once the child desktop opens, configure the real YouTube Kids maturity level, Family Link supervision (if selected), and Netflix Kids profile yourself. Shortcuts or browser filters alone don't make content automatically age-appropriate.
+5. On the same Wi-Fi, open the ParentPilot Android app and tap **Find nearby laptop**. The setup automatically enables Avahi `_maxfamily._tcp` discovery on port 8743.
 
-## Build and test
-
-Run from the source repository root:
-
-```bash
-python3 desktop/test_server.py
-python3 packaging/test_installer.py
-python3 packaging/test_compatibility.py
-bash packaging/build-deb.sh
-```
-
-The preflight tests simulate distro identities and verify that unsupported systems are refused. **No automated test replaces a real disposable XFCE/X11 VM installation. Do not test this on Max's working Dell.**
+No unattended child account is created by installing the `.deb`. The optional screen-viewing feature discussed for a later release is **not implemented in this package**; it would need an authenticated, child-visible opt-in design.
