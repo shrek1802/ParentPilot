@@ -38,9 +38,9 @@ jobs:
       - name: Inspect package and protect maintainer scripts
         run: |
           test -s dist/parentpilot_0.5.0~preview3_all.deb
-          dpkg-deb --info dist/parentpilot_0.5.0~preview2_all.deb
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview2_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview2_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+          dpkg-deb --info dist/parentpilot_0.5.0~preview3_all.deb
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview3_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview3_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
