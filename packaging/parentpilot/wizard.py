@@ -28,8 +28,10 @@ class Wizard:
                 return
         self.root=tk.Tk()
         self.root.title('ParentPilot — Family Setup')
-        self.root.geometry('780x690')
-        self.root.minsize(700,610)
+        width=min(780,max(560,self.root.winfo_screenwidth()-60))
+        height=min(690,max(440,self.root.winfo_screenheight()-100))
+        self.root.geometry(f'{width}x{height}')
+        self.root.minsize(560,440)
         self.root.configure(bg=BG)
         self.root.protocol('WM_DELETE_WINDOW',self.root.destroy)
         self.step=0
