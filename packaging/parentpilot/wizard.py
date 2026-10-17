@@ -61,7 +61,13 @@ class Wizard:
         try:
             result=subprocess.run(['/usr/bin/python3','/usr/lib/parentpilot/preflight.py','--json'],
                                   capture_output=True,text=True,timeout=5,check=True)
-            return json.loads(result.stdout)
+            state = json.loads(result.stdout)
+            # pkexec can clear desktop variables later, but the interactive
+            # wizard must verify a real XFCE/X11 parent login first.
+            if state.get('session') != 'x11' or 'XFCE' not in state.get('desktop', '').upper():
+                state['compatible'] = False
+                state.setdefault('errors', []).append('Sign into an XFCE desktop using an X11 session, then reopen ParentPilot Family Setup.')
+            return state
         except (OSError, ValueError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
             return {'compatible':False, 'os':'Unknown system', 'errors':['Could not run the compatibility check. Reinstall ParentPilot.'], 'notices':[], 'lightdm':False}
 
