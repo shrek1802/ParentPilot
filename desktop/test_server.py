@@ -92,8 +92,9 @@ with tempfile.TemporaryDirectory() as tmp:
         raise AssertionError('Anonymous local-grant via proxy')
     except urllib.error.HTTPError as e: assert e.code==403
     assert 'pattern="[0-9]{6}"' in m.login_html()
-    # Optional screen sharing cannot be accessed without a parent session;
-    # the child must explicitly approve every request using the desktop token.
+    # A parent opts in at install and authenticates every dashboard session.
+    # The child-side process receives a short-lived request and shows a notice.
+    # The desktop token must be presented to upload a captured image.
     assert ctrl.screen_state()['screen_status'] == 'idle'
     post('/action',action='request-screen',csrf=csrf).read()
     request_id = ctrl.screen_state(desktop=True)['screen_request']
@@ -117,11 +118,25 @@ with tempfile.TemporaryDirectory() as tmp:
     assert op.open(url+'/screen.jpg').read() == jpeg
     ctrl.screen_image_until = 0.0
     assert ctrl.get_screen() is None
+    # Repeated requests are throttled, including by a logged-in parent.
+    try:
+        post('/action',action='request-screen',csrf=csrf).read()
+        raise AssertionError('Rapid screen requests were not rate-limited')
+    except urllib.error.HTTPError as e: assert e.code == 400
+    ctrl.screen_requested_at -= m.SCREEN_REQUEST_INTERVAL + 1
     post('/action',action='request-screen',csrf=csrf).read()
     request_id = ctrl.screen_state(desktop=True)['screen_request']
-    assert op.open(urllib.request.Request(url+'/api/screen/decline',
+    assert op.open(urllib.request.Request(url+'/api/screen/fail',
         data=urllib.parse.urlencode({'request':request_id}).encode(),
         headers={'Content-Type':'application/x-www-form-urlencoded',**token})).read() == b'OK'
-    assert ctrl.screen_state()['screen_status'] == 'declined'
+    assert ctrl.screen_state()['screen_status'] == 'failed'
+    # Opt-out must stop new requests even when the parent is authenticated.
+    ctrl.cfg['screen_view_enabled'] = False
+    ctrl.screen_requested_at -= m.SCREEN_REQUEST_INTERVAL + 1
+    try:
+        post('/action',action='request-screen',csrf=csrf).read()
+        raise AssertionError('Screen preview worked when disabled')
+    except urllib.error.HTTPError as e: assert e.code == 400
+    assert ctrl.screen_state()['screen_status'] == 'disabled'
     s.shutdown()
     print('PASS: timer, persistence, pause, resume, unlimited, password, CSRF, parent web controls and local bonus time')
