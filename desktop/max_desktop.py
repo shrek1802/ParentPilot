@@ -64,6 +64,8 @@ class MaxUI:
         self.last_state = None
         self.offline = False
         self.guard = LockGuard()
+        self.screen_notice = None
+        self.seen_screen_requests = set()
         self.root.after(100, self.refresh)
         self.root.mainloop()
 
@@ -176,6 +178,79 @@ class MaxUI:
             self.overlay.destroy()
             self.overlay = None
 
+    def show_screen_notice(self, text):
+        """Persistent child-visible notice before capture and during image availability."""
+        if self.screen_notice is None or not self.screen_notice.winfo_exists():
+            self.screen_notice = tk.Toplevel(self.root)
+            self.screen_notice.overrideredirect(True)
+            self.screen_notice.attributes('-topmost', True)
+            self.screen_notice.configure(bg='#14532d', padx=14, pady=10)
+            self.screen_notice_label = tk.Label(
+                self.screen_notice, bg='#14532d', fg=WHITE,
+                font=('Sans', 10, 'bold'), wraplength=460
+            )
+            self.screen_notice_label.pack()
+        self.screen_notice_label.configure(text=text)
+        self.screen_notice.geometry('+25+25')
+        self.screen_notice.lift()
+        self.screen_notice.update_idletasks()
+
+    def hide_screen_notice(self, notice):
+        if self.screen_notice is notice and notice.winfo_exists():
+            notice.destroy()
+            self.screen_notice = None
+
+    def report_screen_failure(self, request_id):
+        # Child-side operation uses the existing LOCAL desktop token.
+        # A failed capture never silently retries or generates a fake image.
+        try:
+            body = urllib.parse.urlencode({'request': request_id}).encode('utf8')
+            req = urllib.request.Request(
+                ENDPOINT + '/api/screen/fail', data=body,
+                headers={'Content-Type': 'application/x-www-form-urlencoded',
+                         **desktop_headers()}
+            )
+            with urllib.request.urlopen(req, timeout=3, context=TLS):
+                pass
+        except (OSError, urllib.error.URLError):
+            pass
+
+    def share_one_screen(self, request_id):
+        try:
+            from screen_view import capture_jpeg
+            picture = capture_jpeg()
+            req = urllib.request.Request(
+                ENDPOINT + '/api/screen/upload', data=picture, method='POST',
+                headers={'Content-Type': 'image/jpeg',
+                         'X-ParentPilot-Screen-Request': request_id,
+                         **desktop_headers()}
+            )
+            with urllib.request.urlopen(req, timeout=8, context=TLS) as response:
+                if response.status != 200:
+                    raise RuntimeError('ParentPilot did not accept the preview.')
+            self.show_screen_notice(
+                'ParentPilot: your parent viewed a picture of this screen'
+            )
+        except Exception:
+            self.report_screen_failure(request_id)
+            self.show_screen_notice(
+                'ParentPilot: your parent requested a screen picture, but it failed'
+            )
+        finally:
+            notice = self.screen_notice
+            if notice is not None and notice.winfo_exists():
+                notice.after(30000, lambda: self.hide_screen_notice(notice))
+
+    def parent_requested_screen(self, request_id):
+        """The parent opted in during installation; show a notice, not an approval prompt."""
+        if not request_id:
+            return
+        # Display a visible notice BEFORE taking the image; do not capture covertly.
+        self.show_screen_notice(
+            'ParentPilot: your parent is viewing one picture of this screen'
+        )
+        self.root.after(400, lambda: self.share_one_screen(request_id))
+
     def refresh(self):
         try:
             state = request_state()
@@ -205,6 +280,11 @@ class MaxUI:
             # The parent PIN controls are in THIS foreground window, not behind an extra mask.
             self.guard.enforce(self.overlay)
         self.last_state = state
+        if state is not None and state.get('allowed') and state.get('screen_enabled'):
+            request_id = state.get('screen_request', '')
+            if request_id and request_id not in self.seen_screen_requests:
+                self.seen_screen_requests.add(request_id)
+                self.parent_requested_screen(request_id)
         # Refresh once per second during the final minute, otherwise every 2s.
         # Server is authoritative; the overlay appears when it reports expiry.
         short_countdown = (state is not None and state.get('allowed')
