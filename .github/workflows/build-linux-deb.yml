@@ -41,6 +41,9 @@ jobs:
           dpkg-deb --info dist/parentpilot_0.5.0~preview3_all.deb
           dpkg-deb --contents dist/parentpilot_0.5.0~preview3_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
           dpkg-deb --contents dist/parentpilot_0.5.0~preview3_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview3_all.deb | grep -F '/usr/share/icons/hicolor/128x128/apps/parentpilot.png'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview3_all.deb | grep -F '/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview3_all.deb | grep -F '/usr/lib/parentpilot/desktop/screen_view.py'
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
