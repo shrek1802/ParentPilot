@@ -2,7 +2,6 @@
 """ParentPilot first-run GUI setup. No account modifications without PolicyKit approval."""
 import json
 import os
-import unicodedata
 from pathlib import Path
 import re
 import shutil
@@ -11,6 +10,7 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
+from platform_check import inspect_host
 
 ROOT = Path('/usr/lib/parentpilot')
 MARKER = Path('/etc/max-family-control/config.json')
@@ -28,15 +28,12 @@ class Wizard:
                 return
         self.root=tk.Tk()
         self.root.title('ParentPilot — Family Setup')
-        self.root.geometry('780x690')
-        self.root.minsize(700,610)
+        self.root.geometry('810x720')
+        self.root.minsize(730,650)
         self.root.configure(bg=BG)
         self.root.protocol('WM_DELETE_WINDOW',self.root.destroy)
         self.step=0
         self.installing=False
-        self.preflight=self.load_preflight()
-        self._previous_suggestion=''
-        self._suggesting_user=False
         self.v={
             'child_name':tk.StringVar(value=''),
             'child_user':tk.StringVar(value=''),
@@ -46,40 +43,14 @@ class Wizard:
             'parent_pin2':tk.StringVar(value=''),
             'youtube':tk.StringVar(value='kids'),
             'netflix':tk.BooleanVar(value=True),
-            'autologin':tk.BooleanVar(value=bool(self.preflight.get('lightdm'))),
+            'autologin':tk.BooleanVar(value=bool(shutil.which('lightdm'))),
             'family_filter':tk.BooleanVar(value=True),
         }
-        self.v['child_name'].trace_add('write', self.suggest_user)
+        self.preflight=inspect_host(auto_login=False)
         self.main=tk.Frame(self.root,bg=BG)
         self.main.pack(fill='both',expand=True,padx=28,pady=20)
         self.draw()
         self.root.mainloop()
-
-    @staticmethod
-    def load_preflight():
-        try:
-            result=subprocess.run(['/usr/bin/python3','/usr/lib/parentpilot/preflight.py','--json'],
-                                  capture_output=True,text=True,timeout=5,check=True)
-            return json.loads(result.stdout)
-        except (OSError, ValueError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
-            return {'compatible':False, 'os':'Unknown system', 'errors':['Could not run the compatibility check. Reinstall ParentPilot.'], 'notices':[], 'lightdm':False}
-
-    def suggest_user(self,*_):
-        name=unicodedata.normalize('NFKD',self.v['child_name'].get())
-        latin=name.encode('ascii','ignore').decode('ascii').lower()
-        suggestion=re.sub(r'[^a-z0-9_-]', '', latin)[:30]
-        if suggestion and not suggestion[0].isalpha(): suggestion='kid'+suggestion
-        if not suggestion: suggestion='child'
-        current=self.v['child_user'].get()
-        if not current or current==self._previous_suggestion:
-            self.v['child_user'].set(suggestion)
-        self._previous_suggestion=suggestion
-
-    def refresh_check(self):
-        self.preflight=self.load_preflight()
-        if not self.preflight.get('lightdm'):
-            self.v['autologin'].set(False)
-        self.draw()
 
     def lbl(self,parent,txt,size=11,col=TEXT,bold=False,wrap=670,pad=7):
         w=tk.Label(parent,text=txt,bg=parent.cget('bg'),fg=col,
@@ -132,29 +103,37 @@ class Wizard:
         self.root.update_idletasks()
 
     def welcome(self):
-        self.lbl(self.body,'Welcome to ParentPilot',19,TEXT,True)
-        self.lbl(self.body,'Follow a few simple steps to set up your child’s laptop. You won’t need to type Terminal commands.',11,SUB,wrap=620,pad=6)
-        osname=self.preflight.get('os','Unknown Linux')
-        allowed=self.preflight.get('compatible',False)
-        self.lbl(self.body,('✓ Laptop check passed: ' if allowed else '⚠ Setup cannot continue: ')+osname,
-                 12,TEAL if allowed else '#fca5a5',True,pad=15)
-        errors=self.preflight.get('errors',[])
-        if errors:
-            for err in errors[:5]: self.lbl(self.body,'• '+err,10,'#fca5a5',wrap=600,pad=1)
+        self.lbl(self.body,'Welcome to your family’s new laptop',19,TEXT,True)
+        self.lbl(self.body,'We will set up a separate child account, easy-to-use apps and family screen-time controls. No Terminal commands needed.',12,SUB,wrap=620,pad=12)
+        for txt in (
+            '1   Create the child’s name, Linux username and password',
+            '2   Choose your six-digit parent PIN and YouTube options',
+            '3   Install safe Chromium shortcuts, YouTube and Netflix',
+            '4   Set up the ParentPilot timer and phone discovery',
+        ):self.lbl(self.body,txt,12,TEXT,pad=15)
+        self.lbl(self.body,'Before we begin: compatibility check',13,TEAL,True,pad=16)
+        self.show_preflight(self.body)
+        self.lbl(self.body,'For NEW XFCE/X11 computers only. Existing ParentPilot settings and accounts will not be overwritten.',10,SUB,pad=8)
+
+    def show_preflight(self, parent):
+        result=self.preflight
+        self.lbl(parent,f"System: {result['distro']}  |  {result['display']}",10,TEXT,True,pad=2)
+        if result['ok']:
+            self.lbl(parent,'Ready for setup: the required desktop checks passed.',11,TEAL,True,pad=2)
         else:
-            self.lbl(self.body,'XFCE desktop, required tools and Chromium were checked. This preview uses X11.',10,SUB,pad=2)
-        notices=self.preflight.get('notices',[])
-        for msg in notices[:2]: self.lbl(self.body,'Note: '+msg,9,SUB,wrap=610,pad=3)
-        tk.Button(self.body,text='Check this laptop again',command=self.refresh_check,bg='#334155',fg=TEXT,
-                  activebackground='#475569',font=('DejaVu Sans',10),borderwidth=0,padx=12,pady=6).pack(anchor='w',pady=(12,2))
-        self.lbl(self.body,'Next: child account → parental PIN → family apps → final confirmation.',10,TEAL,pad=16)
-        self.lbl(self.body,'If you already have a working ParentPilot installation, this setup will not touch it.',10,SUB,pad=3)
+            self.lbl(parent,'Setup is not ready yet:',11,'#fca5a5',True,pad=2)
+        for line in result['blockers'][:5]:
+            self.lbl(parent,'•  '+line,10,'#fca5a5',pad=2)
+        for line in result['warnings'][:2]:
+            self.lbl(parent,'•  '+line,10,SUB,pad=2)
+        if result['blockers']:
+            self.lbl(parent,'Fix these on this laptop before continuing. Other Linux desktops need a different lock implementation.',10,SUB,pad=5)
 
     def child(self):
         self.lbl(self.body,'Who will use this laptop?',18,TEXT,True)
         self.lbl(self.body,'Their Linux account will be separate from your administrator account.',11,SUB)
         self.entry(self.body,'Child’s name (shown on their screen)','child_name')
-        self.entry(self.body,'Suggested child login name (you can change it)','child_user')
+        self.entry(self.body,'Child’s Linux username (lowercase; e.g. max)','child_user')
         self.entry(self.body,'Child account password (at least 8 characters)','child_password',True)
         self.entry(self.body,'Confirm the child account password','child_password2',True)
         self.lbl(self.body,'The child account will not have administrator privileges. This password is separate from your six-digit parent PIN.',10,SUB,pad=15)
@@ -163,19 +142,15 @@ class Wizard:
         self.lbl(self.body,'Parental controls & apps',18,TEXT,True)
         self.entry(self.body,'Create a six-digit parent PIN','parent_pin',True)
         self.entry(self.body,'Confirm parent PIN','parent_pin2',True)
-        self.lbl(self.body,'YouTube experience',11,SUB,True,pad=10)
+        self.lbl(self.body,'YouTube experience (you will confirm age settings after installation)',11,SUB,True,pad=10)
         for value,label in [('kids','YouTube Kids (parent selects age range in YouTube Kids)'),('supervised','YouTube (supervised Google child account required)')]:
             tk.Radiobutton(self.body,text=label,value=value,variable=self.v['youtube'],bg=CARD,fg=TEXT,
                            selectcolor=BG,activeforeground=TEXT,activebackground=CARD,anchor='w',
                            font=('DejaVu Sans',10)).pack(fill='x',pady=2)
         self.checked(self.body,'Add Netflix shortcut (use a Kids profile and lock adult profiles)','netflix')
-        if self.preflight.get('lightdm'):
-            self.checked(self.body,'Automatically sign the child in at startup (LightDM)','autologin')
-        else:
-            self.v['autologin'].set(False)
-            self.lbl(self.body,'Automatic login is unavailable without LightDM. Your child can still sign in normally.',10,SUB,pad=7)
+        self.checked(self.body,'Automatically sign the child in at startup','autologin')
         self.checked(self.body,'Apply family filtering to Chromium on this computer','family_filter')
-        self.lbl(self.body,'Filtering policies apply to ALL Chromium accounts on this computer, including the parent. YouTube and Netflix age/profile settings must be set up separately.',10,SUB,pad=7)
+        self.lbl(self.body,'Chromium policies apply to EVERY Chromium user on this PC (not Google Chrome). Some content filtering can be bypassed; Netflix playback may require Widevine DRM.',10,SUB,pad=9)
 
     def review(self):
         self.lbl(self.body,'Ready to install',18,TEXT,True)
@@ -184,7 +159,8 @@ class Wizard:
         self.lbl(self.body,'Netflix shortcut: '+('Yes' if self.v['netflix'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Child automatic login: '+('Yes' if self.v['autologin'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Chromium family policy: '+('Enabled' if self.v['family_filter'].get() else 'Not enabled'),11,SUB)
-        self.lbl(self.body,'The child’s desktop will have a curated bottom bar with Chromium, YouTube, Files and optionally Netflix. Hidden menu icons are not an OS-level app block.',11,SUB,pad=25)
+        self.lbl(self.body,'The child gets a simple bottom bar: browser, YouTube, Files and optional Netflix. Hiding icons does not securely block software.',11,SUB,pad=15)
+        self.lbl(self.body,'Laptop: '+self.preflight['distro']+' — '+self.preflight['display'],10,TEAL,pad=5)
         self.lbl(self.body,'Installing requires your existing ADMINISTRATOR password in the system authentication popup. The child’s six-digit PIN will never appear in this window.',10,TEAL,pad=17)
         self.result=tk.Text(self.body,height=7,bg='#0d1728',fg=TEXT,insertbackground=TEXT,font=('DejaVu Sans Mono',9),wrap='word')
         self.result.pack(fill='both',expand=True,pady=(15,2))
@@ -211,8 +187,13 @@ class Wizard:
         return None
 
     def next(self):
-        if self.step == 0 and not self.preflight.get('compatible',False):
-            messagebox.showerror('Laptop not ready','See the reasons above. Nothing has been changed.');return
+        if self.step==0:
+            self.preflight=inspect_host(auto_login=False)
+            if not self.preflight['ok']:
+                messagebox.showerror('Laptop setup not supported yet',
+                                     '\n'.join(self.preflight['blockers'])+'\n\nPlease use XFCE on X11 or fix the missing requirements.')
+                self.draw()
+                return
         err=self.check_step()
         if err:messagebox.showerror('Check setup details',err);return
         self.step+=1;self.draw()
@@ -227,8 +208,9 @@ class Wizard:
 
     def install(self):
         if self.installing: return
-        if not messagebox.askyesno('Confirm ParentPilot setup',
-                'Create the new child account and install the timer, family shortcuts and Wi-Fi discovery?\n\nYour existing adult account will not be changed.'):
+        self.preflight=inspect_host(auto_login=self.v['autologin'].get())
+        if not self.preflight['ok']:
+            messagebox.showerror('Laptop compatibility check', '\n'.join(self.preflight['blockers']))
             return
         self.installing=True
         self.append('Requesting administrator permission…')
@@ -249,7 +231,7 @@ class Wizard:
         self.installing=False
         self.append(output if output else 'The setup did not return a message.')
         if success:
-            messagebox.showinfo('ParentPilot ready','Setup complete. Next, sign into the new child account to test its desktop. Your parent dashboard is ready.')
+            messagebox.showinfo('ParentPilot ready','Setup complete!\n\nNext: sign in to the child account, configure YouTube Kids or Family Link, and open ParentPilot on your phone (same Wi-Fi).\n\nYour screen-time controls begin paused until you approve time.')
         else:
             messagebox.showerror('Setup was not completed','The installation stopped. Read the details above. ParentPilot will not overwrite an existing installation.')
 
