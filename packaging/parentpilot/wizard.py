@@ -48,6 +48,7 @@ class Wizard:
             'netflix':tk.BooleanVar(value=True),
             'autologin':tk.BooleanVar(value=bool(self.preflight.get('lightdm'))),
             'family_filter':tk.BooleanVar(value=True),
+            'screen_view':tk.BooleanVar(value=False),
         }
         self.v['child_name'].trace_add('write', self.suggest_user)
         self.main=tk.Frame(self.root,bg=BG)
@@ -111,9 +112,19 @@ class Wizard:
         text=tk.Frame(head,bg=BG);text.pack(side='left',fill='x',expand=True)
         self.lbl(text,'ParentPilot',24,TEXT,True,pad=0)
         self.lbl(text,'FAMILY SETUP  •  STEP '+str(self.step+1)+' OF 4',10,TEAL,True,pad=1)
-        card=tk.Frame(self.main,bg=CARD,padx=24,pady=15)
+        # Long option descriptions must remain reachable at small laptop resolutions.
+        card=tk.Frame(self.main,bg=CARD)
         card.pack(fill='both',expand=True,pady=(18,10))
-        self.body=card
+        canvas=tk.Canvas(card,bg=CARD,highlightthickness=0,borderwidth=0)
+        bar=tk.Scrollbar(card,orient='vertical',command=canvas.yview)
+        canvas.configure(yscrollcommand=bar.set)
+        bar.pack(side='right',fill='y')
+        canvas.pack(side='left',fill='both',expand=True)
+        body=tk.Frame(canvas,bg=CARD,padx=24,pady=15)
+        window=canvas.create_window((0,0),window=body,anchor='nw')
+        body.bind('<Configure>',lambda _:canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>',lambda event:canvas.itemconfigure(window,width=event.width))
+        self.body=body
         if self.step==0:self.welcome()
         elif self.step==1:self.child()
         elif self.step==2:self.controls()
@@ -147,7 +158,7 @@ class Wizard:
         for msg in notices[:2]: self.lbl(self.body,'Note: '+msg,9,SUB,wrap=610,pad=3)
         tk.Button(self.body,text='Check this laptop again',command=self.refresh_check,bg='#334155',fg=TEXT,
                   activebackground='#475569',font=('DejaVu Sans',10),borderwidth=0,padx=12,pady=6).pack(anchor='w',pady=(12,2))
-        self.lbl(self.body,'Next: child account → parental PIN → family apps → final confirmation.',10,TEAL,pad=16)
+        self.lbl(self.body,'Next: child account → parental PIN & family apps → final confirmation.',10,TEAL,pad=16)
         self.lbl(self.body,'If you already have a working ParentPilot installation, this setup will not touch it.',10,SUB,pad=3)
 
     def child(self):
@@ -176,6 +187,8 @@ class Wizard:
             self.lbl(self.body,'Automatic login is unavailable without LightDM. Your child can still sign in normally.',10,SUB,pad=7)
         self.checked(self.body,'Apply family filtering to Chromium on this computer','family_filter')
         self.lbl(self.body,'Filtering policies apply to ALL Chromium accounts on this computer, including the parent. YouTube and Netflix age/profile settings must be set up separately.',10,SUB,pad=7)
+        self.checked(self.body,"Optional: let a parent request a picture of the child's screen",'screen_view')
+        self.lbl(self.body,'OFF by default. Every request shows an Allow / No thanks question on the child laptop. A picture lasts 30 seconds, is not recorded and is only visible after signing in with your parent PIN. This does NOT enable live video.',10,SUB,pad=7)
 
     def review(self):
         self.lbl(self.body,'Ready to install',18,TEXT,True)
@@ -184,6 +197,7 @@ class Wizard:
         self.lbl(self.body,'Netflix shortcut: '+('Yes' if self.v['netflix'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Child automatic login: '+('Yes' if self.v['autologin'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Chromium family policy: '+('Enabled' if self.v['family_filter'].get() else 'Not enabled'),11,SUB)
+        self.lbl(self.body,'Screen picture requests: '+('Optional, with permission every time' if self.v['screen_view'].get() else 'Off'),11,SUB)
         self.lbl(self.body,'The child’s desktop will have a curated bottom bar with Chromium, YouTube, Files and optionally Netflix. Hidden menu icons are not an OS-level app block.',11,SUB,pad=25)
         self.lbl(self.body,'Installing requires your existing ADMINISTRATOR password in the system authentication popup. The child’s six-digit PIN will never appear in this window.',10,TEAL,pad=17)
         self.result=tk.Text(self.body,height=7,bg='#0d1728',fg=TEXT,insertbackground=TEXT,font=('DejaVu Sans Mono',9),wrap='word')
