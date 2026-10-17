@@ -196,7 +196,7 @@ class Wizard:
         self.checked(self.body,'Apply family filtering to Chromium on this computer','family_filter')
         self.lbl(self.body,'Filtering policies apply to ALL Chromium accounts on this computer, including the parent. YouTube and Netflix age/profile settings must be set up separately.',10,SUB,pad=7)
         self.checked(self.body,"Optional: let a parent request a picture of the child's screen",'screen_view')
-        self.lbl(self.body,'OFF by default. Every request shows an Allow / No thanks question on the child laptop. A picture lasts 30 seconds, is not recorded and is only visible after signing in with your parent PIN. This does NOT enable live video.',10,SUB,pad=7)
+        self.lbl(self.body,'OFF by default. If enabled, a signed-in parent can ask for one screen picture without the child approving each request. The child sees a clear on-screen viewing notice each time. No hidden capture, live video or recording. Each picture expires after 30 seconds.',10,SUB,pad=7)
 
     def review(self):
         self.lbl(self.body,'Ready to install',18,TEXT,True)
@@ -205,7 +205,7 @@ class Wizard:
         self.lbl(self.body,'Netflix shortcut: '+('Yes' if self.v['netflix'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Child automatic login: '+('Yes' if self.v['autologin'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Chromium family policy: '+('Enabled' if self.v['family_filter'].get() else 'Not enabled'),11,SUB)
-        self.lbl(self.body,'Screen picture requests: '+('Optional, with permission every time' if self.v['screen_view'].get() else 'Off'),11,SUB)
+        self.lbl(self.body,'Screen picture requests: '+('Parent-authorised, with a visible child notice' if self.v['screen_view'].get() else 'Off'),11,SUB)
         self.lbl(self.body,'The child’s desktop will have a curated bottom bar with Chromium, YouTube, Files and optionally Netflix. Hidden menu icons are not an OS-level app block.',11,SUB,pad=25)
         self.lbl(self.body,'Installing requires your existing ADMINISTRATOR password in the system authentication popup. The child’s six-digit PIN will never appear in this window.',10,TEAL,pad=17)
         self.result=tk.Text(self.body,height=7,bg='#0d1728',fg=TEXT,insertbackground=TEXT,font=('DejaVu Sans Mono',9),wrap='word')
