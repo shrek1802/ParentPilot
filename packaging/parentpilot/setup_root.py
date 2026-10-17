@@ -16,8 +16,7 @@ import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from preflight import report as host_report
+from platform_check import assess, parse_os_release
 
 APP = Path('/usr/lib/parentpilot/desktop')
 TARGET = Path('/opt/max-family-control')
@@ -29,16 +28,7 @@ USERNAME = re.compile(r'^[a-z][a-z0-9_-]{0,30}$')
 
 
 def run(*args, input=None):
-    # PolicyKit may reset PATH; Debian keeps system administration commands
-    # under /usr/sbin (not available on all default user paths).
-    command = str(args[0])
-    if '/' not in command and not shutil.which(command):
-        for directory in ('/usr/sbin', '/sbin', '/usr/bin', '/bin'):
-            candidate = Path(directory)/command
-            if candidate.is_file():
-                command = str(candidate)
-                break
-    return subprocess.run((command, *args[1:]), input=input, text=True, check=True, capture_output=True)
+    return subprocess.run(args, input=input, text=True, check=True, capture_output=True)
 
 
 def validate(data):
@@ -62,18 +52,24 @@ def validate(data):
     return name, user, password, pin
 
 
-def check_host(user, autologin=False, family_filter=False):
-    status = host_report()
-    if status['errors']:
-        raise RuntimeError('Laptop compatibility check failed: ' + ' '.join(status['errors']))
-    if not Path('/run/systemd/system').exists():
-        raise RuntimeError('Systemd services are not available. Start a normal Linux desktop session and try again.')
-    if autologin and not status['lightdm']:
-        raise RuntimeError('Automatic child login needs LightDM. Go Back and turn off auto login, or set up LightDM first.')
-    if family_filter and POLICY.exists():
-        raise RuntimeError('Chromium family policy already exists. Go Back and turn off filtering; existing policies will never be overwritten.')
+def check_host(user, auto_login=False):
+    # Privileged pkexec helpers have an intentionally stripped graphical
+    # environment. We recheck installed desktop/runtime requirements here,
+    # while the unprivileged setup wizard has already verified X11 and XFCE.
+    if sys.platform != 'linux':
+        raise RuntimeError('ParentPilot requires Linux.')
+    release = parse_os_release(Path('/etc/os-release').read_text(encoding='utf8'))
+    candidates=('xfce4-session','xfce4-panel','lightdm','avahi-daemon','openssl',
+                'setfacl','chpasswd','systemctl','chromium','chromium-browser', 'python3', 'pkexec')
+    binaries={cmd for cmd in candidates if shutil.which(cmd)}
+    result=assess(release,binaries=binaries,auto_login=auto_login,
+                  systemd=Path('/run/systemd/system').is_dir())
+    if not result['ok']:
+        raise RuntimeError('Laptop compatibility check failed: '+'; '.join(result['blockers']))
+    if auto_login and not Path('/etc/lightdm').is_dir():
+        raise RuntimeError('Automatic login requires LightDM. Disable the option or install LightDM.')
     if (CFG / 'config.json').exists() or (TARGET / 'control_server.py').exists():
-        raise RuntimeError('An existing ParentPilot/Max Family Control installation was found. This fresh installer will not reset existing settings.')
+        raise RuntimeError('An existing ParentPilot or Max Family Control installation was found. This is a FRESH INSTALL package; it will not overwrite Max or his timer.')
     if (Path('/home') / user).exists():
         raise RuntimeError('This child home already exists. Choose a different username.')
     try: pwd.getpwnam(user)
@@ -81,7 +77,6 @@ def check_host(user, autologin=False, family_filter=False):
     else: raise RuntimeError('That Linux user already exists. Choose another username.')
     if not APP.joinpath('max_desktop.py').is_file() or not APP.joinpath('parentpilot_lock_media.py').is_file():
         raise RuntimeError('ParentPilot files are incomplete. Reinstall the .deb.')
-    return status
 
 
 def make_desktop(path, name, exec_cmd, icon, comment):
@@ -154,14 +149,14 @@ def child_desktop(user, name, youtube, netflix):
     icons=home/'.local/share/icons'; icons.mkdir(parents=True,exist_ok=True)
     for icon in ('youtube.svg','netflix.svg'):
         shutil.copy2(Path('/usr/lib/parentpilot/icons')/icon,icons/f'parentpilot-{icon}')
-    browser=shutil.which('chromium') or shutil.which('chromium-browser')
-    if not browser: raise RuntimeError('Chromium is missing. Please install it and retry.')
-    make_desktop(appl/'parentpilot-browser.desktop','Family Chromium',f'{browser} --no-first-run','chromium','Chromium browser with available family policies')
+    chromium=shutil.which('chromium') or shutil.which('chromium-browser')
+    if not chromium: raise RuntimeError('Chromium is missing. Install it before starting setup.')
+    make_desktop(appl/'parentpilot-browser.desktop','Child Safe Chromium',f'{chromium} --no-first-run','chromium','Managed Chromium browser')
     if youtube == 'kids': url='https://www.youtubekids.com/'; title='YouTube Kids'
     else: url='https://www.youtube.com/'; title='YouTube (Supervised)'
-    make_desktop(appl/'parentpilot-youtube.desktop',title,f'{browser} --no-first-run --app={url}',str(icons/'parentpilot-youtube.svg'),'A parent must configure the age/maturity setting online')
+    make_desktop(appl/'parentpilot-youtube.desktop',title,f'{chromium} --no-first-run --app={url}',str(icons/'parentpilot-youtube.svg'),'A parent must configure the age/maturity setting online')
     if netflix:
-        make_desktop(appl/'parentpilot-netflix.desktop','Netflix', f'{browser} --no-first-run --app=https://www.netflix.com/',str(icons/'parentpilot-netflix.svg'),'Use a Kids profile and lock adult profiles. DRM requires Widevine.')
+        make_desktop(appl/'parentpilot-netflix.desktop','Netflix', f'{chromium} --no-first-run --app=https://www.netflix.com/',str(icons/'parentpilot-netflix.svg'),'Use a Kids profile and lock adult profiles. DRM requires Widevine.')
     autostart=home/'.config/autostart'; autostart.mkdir(parents=True,exist_ok=True)
     (autostart/'parentpilot.desktop').write_text('[Desktop Entry]\nType=Application\nName=ParentPilot Timer\nExec=/usr/bin/python3 -B /opt/max-family-control/max_desktop_supervisor.py\nTerminal=false\nOnlyShowIn=XFCE;\nX-GNOME-Autostart-enabled=true\n',encoding='utf8')
     # App hiding is per-child and cosmetic: scripts/keyboard shortcuts still exist.
@@ -269,21 +264,19 @@ WantedBy=multi-user.target
     run('systemctl','enable','--now','avahi-daemon.service')
     if autologin:
         directory=Path('/etc/lightdm/lightdm.conf.d');directory.mkdir(parents=True,exist_ok=True)
-        (directory/'99-parentpilot-autologin.conf').write_text(f'[Seat:*]\nautologin-user={user}\nautologin-user-timeout=0\nautologin-session=xfce\n',encoding='utf8')
+        (directory/'99-parentpilot-autologin.conf').write_text(f'[Seat:*]\nautologin-user={user}\nautologin-user-timeout=0\n',encoding='utf8')
 
 
 def main():
-    if len(sys.argv)==2 and sys.argv[1]=='--preflight':
-        print(json.dumps(host_report(), indent=2));return
     if len(sys.argv)==2 and sys.argv[1]=='--validate-json':
         validate(json.load(sys.stdin));print('VALIDATION PASS');return
     if os.geteuid()!=0 or len(sys.argv)!=2 or sys.argv[1]!='--from-wizard':
-        raise RuntimeError('Run the branded ParentPilot Setup wizard from the applications menu.')
+        raise RuntimeError('Run the branded ParentPilot Setup wizard from the Mint application menu.')
     raw=sys.stdin.read(8193)
     if len(raw)>8192: raise ValueError('Setup payload too large.')
     data=json.loads(raw)
     name,user,password,pin=validate(data)
-    check_host(user, autologin=data['autologin'], family_filter=data['family_filter'])
+    check_host(user, data['autologin'])
     # Preserve parent account; never change the adult's password or session.
     run('adduser','--disabled-password','--gecos',f'{name},,,',user)
     run('chpasswd',input=f'{user}:{password}\n')
