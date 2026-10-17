@@ -26,6 +26,7 @@ LOCAL_USERS = {'127.0.0.1', '::1'}
 CONFIG_FILE = CONFIG_DIR / 'config.json'
 STATE_FILE = DATA_DIR / 'state.json'
 DESKTOP_TOKEN_FILE = CONFIG_DIR / 'desktop-token'
+MAX_SCREEN_BYTES = 4 * 1024 * 1024  # bounded, in-memory, one approved JPEG
 
 
 def new_day():
@@ -102,6 +103,63 @@ class Control:
             raise RuntimeError('Desktop auth token missing or invalid. Restore backup or re-run the v0.2 update.')
         self.last_tick = time.monotonic()
         self.active = False
+        # Volatile screen previews: opt-in at installation AND consent on every request.
+        # No recordings, disk writes, streaming, or background capture.
+        self.screen_request = ''
+        self.screen_requested_at = 0.0
+        self.screen_status = 'idle'
+        self.screen_image = None
+        self.screen_image_until = 0.0
+
+    def request_screen(self):
+        if self.cfg.get('screen_view_enabled') is not True:
+            raise ValueError('Screen viewing has not been enabled on this laptop.')
+        with self.lock:
+            self.screen_request = secrets.token_urlsafe(24)
+            self.screen_requested_at = time.monotonic()
+            self.screen_status = 'pending'
+            self.screen_image = None
+            self.screen_image_until = 0.0
+
+    def screen_state(self, desktop=False):
+        with self.lock:
+            now = time.monotonic()
+            if self.screen_status == 'pending' and now - self.screen_requested_at > 30:
+                self.screen_status = 'expired'
+                self.screen_request = ''
+            if self.screen_image is not None and now > self.screen_image_until:
+                self.screen_image = None
+                self.screen_status = 'expired'
+                self.screen_request = ''
+            status = self.screen_status if self.cfg.get('screen_view_enabled') is True else 'disabled'
+            result = {'screen_enabled': self.cfg.get('screen_view_enabled') is True,
+                      'screen_status': status}
+            if desktop and status == 'pending':
+                result['screen_request'] = self.screen_request
+            return result
+
+    def complete_screen(self, request_id, image=None):
+        with self.lock:
+            if self.screen_state()['screen_status'] != 'pending':
+                return False
+            if not request_id or not hmac.compare_digest(request_id, self.screen_request):
+                return False
+            if image is None:
+                self.screen_status = 'declined'
+                self.screen_request = ''
+                return True
+            if not (128 <= len(image) <= MAX_SCREEN_BYTES and
+                    image[:3] == b'\\xff\\xd8\\xff' and image[-2:] == b'\\xff\\xd9'):
+                return False
+            self.screen_image = image
+            self.screen_image_until = time.monotonic() + 30
+            self.screen_status = 'ready'
+            self.screen_request = ''
+            return True
+
+    def get_screen(self):
+        with self.lock:
+            return self.screen_image if self.screen_state()['screen_status'] == 'ready' else None
 
     def _read_state(self):
         try:
@@ -129,10 +187,11 @@ class Control:
     def granted(self):
         return not self.state['paused'] and (self.state['unlimited'] or self.remaining() > 0)
 
-    def snapshot(self):
+    def snapshot(self, desktop=False):
         with self.lock:
             self._fresh_day()
             return {
+                **self.screen_state(desktop=desktop),
                 'day': self.state['day'],
                 'allowance_seconds': self.state['allowance_seconds'],
                 'used_seconds': int(self.state['used_seconds']),
@@ -254,6 +313,17 @@ def dashboard_html(s, csrf, flash=''):
     pct = max(0, min(100, int(s['used_seconds']/total*100))) if total > 0 else 0
     def form(action, label, css='alt'):
         return f'<form action="/action" method="post"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{action}"><button class="{css}">{label}</button></form>'
+    screen_card = ''
+    if s.get('screen_enabled'):
+        condition = s.get('screen_status', 'idle')
+        image = ('<p><img src="/screen.jpg" alt="Child-approved screen preview" '
+                 'style="max-width:100%;border-radius:12px"></p>') if condition == 'ready' else ''
+        screen_card = (f'<section class="card"><h2>View child screen (optional)</h2>'
+                       f'<p class="small">A one-time picture only, not a live stream. '
+                       f'The child sees a request and must allow every picture. '
+                       f'Pictures expire after 30 seconds and are never stored on disk.</p>'
+                       f'<p>Status: {esc(condition)}</p>'
+                       f'{form("request-screen", "Ask for a screen preview")}{image}</section>')
     return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title><link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style></head>
 <body><main><header><div class="brand"><img class="brand-icon" src="/assets/parentpilot-icon.png" alt="ParentPilot"><h1>ParentPilot</h1></div>{form('logout','Sign out')}</header>
 {f'<div class="msg">{esc(flash)}</div>' if flash else ''}
@@ -263,6 +333,7 @@ def dashboard_html(s, csrf, flash=''):
 <section class="card"><h2>Add extra time</h2><div class="actions">{form('add15','+15 minutes','')}{form('add30','+30 minutes','')}{form('add60','+1 hour','')}{form('add120','+2 hours','')}</div>
 <form action="/action" method="post"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="add"><div class="row"><div><label for="bonus">Custom minutes</label><input id="bonus" name="minutes" type="number" min="1" max="720" value="20" required></div><button>Add time</button></div></form></section>
 <section class="card"><h2>Access controls</h2><p class="small">Pause immediately hides the child's desktop; Resume restores access while your child has time remaining.</p><div class="actions">{form('pause','Pause laptop','danger')}{form('resume','Resume laptop','')}{form('unlimited','Unlimited today')}{form('managed','Managed time')}</div><p></p>{form('end','End time for today','danger')}</section>
+{screen_card}
 <p class="small">For phone use, bookmark this page or Add to Home Screen. Controls work over Wi-Fi or a private VPN such as Tailscale. Your child's screen is restored without closing open apps, but this first version is not tamper-proof against a technically skilled child.</p></main></body></html>'''
 
 
@@ -343,7 +414,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/state':
             if not self.desktop_authorized():
                 self.send_bytes('Forbidden', 403); return
-            self.send_bytes(json.dumps(self.ctl.snapshot()), content_type='application/json'); return
+            self.send_bytes(json.dumps(self.ctl.snapshot(desktop=True)), content_type='application/json'); return
+        if self.path == '/screen.jpg':
+            auth = self.get_session()
+            if not auth:
+                self.send_bytes('Authentication required', 403); return
+            picture = self.ctl.get_screen()
+            if picture is None:
+                self.send_bytes('Picture unavailable or expired', 404); return
+            self.send_bytes(picture, content_type='image/jpeg'); return
         if self.path != '/':
             self.send_bytes('Not found', 404); return
         auth = self.get_session()
@@ -371,13 +450,36 @@ class Handler(BaseHTTPRequestHandler):
         return ok
 
     def do_POST(self):
-        if self.path not in ('/login', '/action', '/local-grant'):
+        if self.path == '/api/screen/upload':
+            if not self.desktop_authorized():
+                self.send_bytes('Forbidden', 403); return
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+            except ValueError:
+                size = 0
+            if not 128 <= size <= MAX_SCREEN_BYTES or self.headers.get('Content-Type') != 'image/jpeg':
+                self.send_bytes('Invalid picture', 400); return
+            request_id = self.headers.get('X-ParentPilot-Screen-Request', '')
+            if len(request_id) > 128:
+                self.send_bytes('Invalid request', 400); return
+            image = self.rfile.read(size)
+            if not self.ctl.complete_screen(request_id, image):
+                self.send_bytes('Request expired, invalid, or not enabled', 409); return
+            self.send_bytes('OK', content_type='text/plain'); return
+        if self.path not in ('/login', '/action', '/local-grant', '/api/screen/decline'):
             self.send_bytes('Not found', 404); return
         if not self.headers.get('Content-Type','').lower().startswith('application/x-www-form-urlencoded'):
             self.send_bytes('Invalid content type', 415); return
         fields = self.read_form()
         if fields is None:
             self.send_bytes('Invalid form', 400); return
+        if self.path == '/api/screen/decline':
+            if not self.desktop_authorized():
+                self.send_bytes('Forbidden', 403); return
+            request_id = fields.get('request', '')
+            if len(request_id) > 128 or not self.ctl.complete_screen(request_id):
+                self.send_bytes('Request expired', 409); return
+            self.send_bytes('OK', content_type='text/plain'); return
         if self.path == '/login':
             if not self.password_ok(fields.get('password','')):
                 self.send_bytes(login_html('Incorrect PIN or temporarily rate-limited.', self.ctl.cfg.get('display_name', 'Child')), 403); return
@@ -416,7 +518,10 @@ class Handler(BaseHTTPRequestHandler):
                 minutes = int(fields.get('minutes','0') or '0')
             if action in ('set', 'add') and not (1 <= minutes <= 720):
                 raise ValueError('Enter 1–720 minutes.')
-            self.ctl.change(action, minutes)
+            if action == 'request-screen':
+                self.ctl.request_screen()
+            else:
+                self.ctl.change(action, minutes)
             self.redirect('/')
         except (ValueError, TypeError) as exc:
             self.send_bytes(dashboard_html(self.ctl.snapshot(), auth[1][1], str(exc)), 400)
