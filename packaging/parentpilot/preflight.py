@@ -40,6 +40,19 @@ def debian_family(data: dict) -> bool:
     return bool(members.intersection({'debian', 'ubuntu', 'linuxmint'}))
 
 
+def locate(binary, which, exists):
+    # Debian often keeps chpasswd/adduser/avahi-daemon/lightdm in /usr/sbin,
+    # which may not be on a normal desktop user's PATH.
+    found = which(binary)
+    if found:
+        return found
+    for directory in ('/usr/sbin', '/sbin', '/usr/bin', '/bin'):
+        candidate = f'{directory}/{binary}'
+        if exists(candidate):
+            return candidate
+    return None
+
+
 def report(os_release=None, which=shutil.which, environ=None, exists=None) -> dict:
     env = os.environ if environ is None else environ
     if os_release is None:
@@ -56,9 +69,9 @@ def report(os_release=None, which=shutil.which, environ=None, exists=None) -> di
     if sys.platform != 'linux' or not debian_family(os_release):
         errors.append('This preview requires a Debian/Ubuntu-based Linux system.')
     for label, binary in REQUIRED.items():
-        if not which(binary):
+        if not locate(binary, which, exists):
             errors.append(f'{label} missing ({binary}). Install the required package first.')
-    browser = which('chromium') or which('chromium-browser')
+    browser = locate('chromium', which, exists) or locate('chromium-browser', which, exists)
     if not browser:
         errors.append('Chromium browser missing (chromium or chromium-browser).')
     session = env.get('XDG_SESSION_TYPE', '').lower()
@@ -73,14 +86,14 @@ def report(os_release=None, which=shutil.which, environ=None, exists=None) -> di
         notices.append('A running systemd system manager was not detected; services must work before setup.')
     if exists('/etc/max-family-control/config.json') or exists('/opt/max-family-control/control_server.py'):
         errors.append('Existing ParentPilot/Max Family Control installation detected. This fresh installer will not overwrite it.')
-    if not which('lightdm'):
+    if not locate('lightdm', which, exists):
         notices.append('LightDM is not installed. ParentPilot can work with a manual child login, but automatic child login will be unavailable.')
     if exists('/etc/chromium/policies/managed/90-parentpilot-family.json'):
         notices.append('A ParentPilot Chromium policy already exists; the family-filter option cannot overwrite it.')
     notices.append('The fullscreen lock has only been tested on XFCE/X11; it is not a tamper-proof security boundary.')
     return {'compatible':not errors,'os':system,'session':session or 'unknown',
             'desktop':desktop or 'unknown','browser':browser or '',
-            'lightdm':bool(which('lightdm')),'errors':errors,'notices':notices}
+            'lightdm':bool(locate('lightdm', which, exists)),'errors':errors,'notices':notices}
 
 
 if __name__ == '__main__':
