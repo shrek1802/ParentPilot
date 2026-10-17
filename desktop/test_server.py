@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory() as tmp:
     os.environ['MAXFC_DATA_DIR'] = tmp+'/data'
     import control_server as m
     m.CONFIG_DIR.mkdir(); m.DATA_DIR.mkdir()
-    m.atomic_write(m.CONFIG_FILE, {'child':'max','display_name':'Max', 'password':m.hash_password('123456')})
+    m.atomic_write(m.CONFIG_FILE, {'child':'max','display_name':'Max', 'password':m.hash_password('123456'), 'screen_view_enabled':True})
     m.DESKTOP_TOKEN_FILE.write_text('test-desktop-token-1234567890-test-token-1234567890')
     ctrl=m.Control()
     assert ctrl.snapshot()['allowed'] is False
@@ -92,5 +92,36 @@ with tempfile.TemporaryDirectory() as tmp:
         raise AssertionError('Anonymous local-grant via proxy')
     except urllib.error.HTTPError as e: assert e.code==403
     assert 'pattern="[0-9]{6}"' in m.login_html()
+    # Optional screen sharing cannot be accessed without a parent session;
+    # the child must explicitly approve every request using the desktop token.
+    assert ctrl.screen_state()['screen_status'] == 'idle'
+    post('/action',action='request-screen',csrf=csrf).read()
+    request_id = ctrl.screen_state(desktop=True)['screen_request']
+    assert ctrl.screen_state()['screen_status'] == 'pending'
+    assert 'screen_request' not in ctrl.screen_state()
+    jpeg = b'\xff\xd8\\xff' + bytes(140) + b'\xff\xd9'
+    anon = urllib.request.Request(url+'/screen.jpg')
+    try:
+        urllib.request.urlopen(anon,context=ssl._create_unverified_context()).read()
+        raise AssertionError('Unauthenticated parent preview was allowed')
+    except urllib.error.HTTPError as e: assert e.code == 403
+    unauth = urllib.request.Request(url+'/api/screen/upload',data=jpeg,
+        headers={'Content-Type':'image/jpeg','X-ParentPilot-Screen-Request':request_id})
+    try:
+        op.open(unauth).read()
+        raise AssertionError('Child screen image was accepted without local token')
+    except urllib.error.HTTPError as e: assert e.code == 403
+    authenticated = urllib.request.Request(url+'/api/screen/upload',data=jpeg,
+        headers={'Content-Type':'image/jpeg','X-ParentPilot-Screen-Request':request_id,**token})
+    assert op.open(authenticated).read() == b'OK'
+    assert op.open(url+'/screen.jpg').read() == jpeg
+    ctrl.screen_image_until = 0.0
+    assert ctrl.get_screen() is None
+    post('/action',action='request-screen',csrf=csrf).read()
+    request_id = ctrl.screen_state(desktop=True)['screen_request']
+    assert op.open(urllib.request.Request(url+'/api/screen/decline',
+        data=urllib.parse.urlencode({'request':request_id}).encode(),
+        headers={'Content-Type':'application/x-www-form-urlencoded',**token})).read() == b'OK'
+    assert ctrl.screen_state()['screen_status'] == 'declined'
     s.shutdown()
     print('PASS: timer, persistence, pause, resume, unlimited, password, CSRF, parent web controls and local bonus time')
