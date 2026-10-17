@@ -37,8 +37,8 @@ Being Debian-based **does not mean** the screen-time lock works with every deskt
 - Avahi `_maxfamily._tcp` announces the laptop locally; the Android app finds it on the same Wi-Fi when the router allows mDNS. Do not expose parental port 8743 directly to the internet.
 - **LightDM is optional**; without it, do not select automatic child login. Other display managers are not automatically reconfigured.
 - Removing the `.deb` preserves existing child data; a fully guided repair/uninstall wizard is still planned. Failure part-way through provisioning can leave a partially created child account.
-- The optional **View Child's Screen** in Preview 3 is a **single, child-approved picture**, not live video. It is OFF unless enabled during fresh setup. An authenticated parent clicks **Ask for a screen preview**, and the child chooses **Share one picture** or **No thanks**. Pictures stay in service memory for at most 30 seconds, are not saved to disk and are accessible only to a signed-in parent. No microphone/camera access or background recording is used.
-- This feature requires GTK/Gdk on an X11 child session, and must be tested on a disposable XFCE laptop/VM before relying on it. If the child is absent or declines, the request expires without an image. Each new picture requires a new request and consent.
+- The optional **View Child's Screen** in Preview 3 is a **single parent-authorised picture**, not live video. It is OFF unless an administrator enables the feature during fresh setup. A parent signs in with their PIN and requests a picture. The child sees a **clear on-screen viewing notice before the picture is taken and for 30 seconds afterwards**, but does not need to approve each request. Pictures stay in service memory for at most 30 seconds, are not saved to disk, and are accessible only to a signed-in parent. Requests are limited to one every 45 seconds. No microphone/camera access or background recording is used.
+- This feature requires GTK/Gdk on an X11 child session, and must be tested on a disposable XFCE laptop/VM before relying on it. If the child desktop is not running, the request expires without an image. A failure to capture is reported without silently retrying. Each new picture requires a fresh parent request (not a new child approval).
 
 ## Build and test
 
@@ -68,4 +68,4 @@ The preflight tests simulate distro identities and verify that unsupported syste
 
 If the compatibility screen refuses setup, **do not force it using Terminal commands**. The current fullscreen/PIN overlay needs XFCE on X11, and a different desktop requires dedicated support.
 
-**New in Preview 3:** one-time screen pictures after explicit consent on the child's desktop. This is an experimental feature, **not continuous remote screen viewing**. Test it on a spare device first, and do not deploy Preview 3 on Max's working laptop.
+**New in Preview 3:** parent-requested one-time screen pictures after an administrator opts in during installation, with a **visible child notification** before each capture. This is an experimental feature, **not continuous remote screen viewing**. Test it on a spare device first, and do not deploy Preview 3 on Max's working laptop.
