@@ -271,7 +271,8 @@ class Wizard:
         self.installing=False
         self.append(output if output else 'The setup did not return a message.')
         if success:
-            messagebox.showinfo('ParentPilot ready','Setup complete. Next, sign into the new child account to test its desktop. Your parent dashboard is ready.')
+            messagebox.showinfo('ParentPilot ready',
+                'Setup complete!\n\n1. Sign into the new child account and check its timer.\n2. Connect your phone and laptop to the same Wi-Fi.\n3. Open ParentPilot on Android and tap Find nearby laptop.\n4. Sign in with your parent PIN.\n\nYour existing adult account has not been changed.')
         else:
             messagebox.showerror('Setup was not completed','The installation stopped. Read the details above. ParentPilot will not overwrite an existing installation.')
 
