@@ -29,7 +29,16 @@ USERNAME = re.compile(r'^[a-z][a-z0-9_-]{0,30}$')
 
 
 def run(*args, input=None):
-    return subprocess.run(args, input=input, text=True, check=True, capture_output=True)
+    # PolicyKit may reset PATH; Debian keeps system administration commands
+    # under /usr/sbin (not available on all default user paths).
+    command = str(args[0])
+    if '/' not in command and not shutil.which(command):
+        for directory in ('/usr/sbin', '/sbin', '/usr/bin', '/bin'):
+            candidate = Path(directory)/command
+            if candidate.is_file():
+                command = str(candidate)
+                break
+    return subprocess.run((command, *args[1:]), input=input, text=True, check=True, capture_output=True)
 
 
 def validate(data):
