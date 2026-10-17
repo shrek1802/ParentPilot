@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview2
+VERSION=0.5.0~preview3
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -13,17 +13,19 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: all
-Depends: \${misc:Depends}, python3, python3-tk, python3-gi, openssl, acl, chromium | chromium-browser, avahi-daemon, xfce4-session, xfce4-panel, pkexec, playerctl, pulseaudio-utils, dbus-x11, libx11-6
+Depends: \${misc:Depends}, python3, python3-tk, python3-gi, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, openssl, acl, chromium | chromium-browser, avahi-daemon, xfce4-session, xfce4-panel, pkexec, playerctl, pulseaudio-utils, dbus-x11, libx11-6
 Suggests: lightdm
-Maintainer: ParentPilot Project <parentpilot@example.invalid>
+Maintainer: ParentPilot Project <47456335+shrek1802@users.noreply.github.com>
+Homepage: https://github.com/shrek1802/ParentPilot
 Description: ParentPilot family screen-time setup for Debian-family XFCE/X11
  Guided graphical setup creates a non-admin child account, parent PIN,
  screen-time timer, local phone controls, and a curated child desktop.
+ Optional consented parent screen previews are off by default.
  Installs no child account or timer until an administrator finishes the wizard.
 EOF
 # Debian control files cannot expand misc Depends without debhelper.
 sed -i 's/Depends: ${misc:Depends}, /Depends: /' "$STAGING/DEBIAN/control"
-for f in control_server.py max_desktop.py max_desktop_supervisor.py parentpilot_lock_media.py admin.py; do
+for f in control_server.py max_desktop.py max_desktop_supervisor.py parentpilot_lock_media.py admin.py screen_view.py; do
     install -m 0644 "$ROOT/desktop/$f" "$STAGING/usr/lib/parentpilot/desktop/$f"
 done
 for f in parentpilot-icon.png parentpilot-icon-128.png parentpilot-icon-64.png; do
