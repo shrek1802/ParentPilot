@@ -32,6 +32,27 @@ for f in parentpilot-icon.png parentpilot-icon-128.png parentpilot-icon-64.png; 
     install -m 0644 "$ROOT/desktop/assets/$f" "$STAGING/usr/lib/parentpilot/desktop/assets/$f"
 done
 install -m 0644 "$ROOT/desktop/assets/parentpilot-icon-128.png" "$STAGING/usr/share/pixmaps/parentpilot.png"
+# Recognisable app icon in desktop menus and software centres.
+mkdir -p "$STAGING/usr/share/icons/hicolor/64x64/apps" "$STAGING/usr/share/icons/hicolor/128x128/apps" "$STAGING/usr/share/metainfo"
+install -m 0644 "$ROOT/desktop/assets/parentpilot-icon-64.png" "$STAGING/usr/share/icons/hicolor/64x64/apps/parentpilot.png"
+install -m 0644 "$ROOT/desktop/assets/parentpilot-icon-128.png" "$STAGING/usr/share/icons/hicolor/128x128/apps/parentpilot.png"
+cat > "$STAGING/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>uk.parentpilot.ParentPilot</id>
+  <name>ParentPilot Family Setup</name>
+  <summary>Friendly family screen-time setup for XFCE/X11 Linux laptops</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>Set up a separate child account, screen-time rules and child-friendly
+    shortcuts with a guided parent wizard. Fresh Debian-family XFCE/X11
+    installations only. Existing family settings are never automatically changed.</p>
+  </description>
+  <launchable type="desktop-id">parentpilot-setup.desktop</launchable>
+  <url type="homepage">https://github.com/shrek1802/ParentPilot</url>
+</component>
+EOF
 install -m 0644 "$ROOT/packaging/parentpilot/youtube.svg" "$STAGING/usr/lib/parentpilot/icons/youtube.svg"
 install -m 0644 "$ROOT/packaging/parentpilot/netflix.svg" "$STAGING/usr/lib/parentpilot/icons/netflix.svg"
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
