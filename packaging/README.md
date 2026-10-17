@@ -49,3 +49,20 @@ bash packaging/build-deb.sh
 ```
 
 The preflight tests simulate distro identities and verify that unsupported systems are refused. **No automated test replaces a real disposable XFCE/X11 VM installation. Do not test this on Max's working Dell.**
+
+## Quick start: no Linux knowledge needed
+
+**This is for a spare/new XFCE/X11 installation only. Do not install it over an existing working child's ParentPilot setup.**
+
+1. On the new laptop, sign into an **adult administrator** account.
+2. Double-click the ParentPilot `.deb`, choose **Install Package** and approve the usual administrator password. (If the distro cannot install packages on double-click, open it using its graphical software installer.)
+3. From the app menu, open **ParentPilot Family Setup**. Read the **Compatibility Check** on the first page. A green pass means the detected setup meets the software requirements, *not* that this exact laptop has been tested.
+4. Enter the child's display name and choose a different Linux username and password. The wizard keeps the child a standard, non-admin user.
+5. Make a separate six-digit parent PIN; pick **YouTube Kids** or supervised YouTube, optional Netflix, Chromium filtering and optional automatic login. Leave automatic login off if the wizard says LightDM is missing.
+6. Check the **review page**, then click **Install** and approve the administrator prompt. No child account is created until this step.
+7. When setup reports success, sign into the child's account once. Complete YouTube Kids' age selection or supervised account setup and select Netflix Kids / lock adult Netflix profiles separately.
+8. Open ParentPilot Android on your phone, while connected to the **same Wi-Fi**, and press **Find nearby laptop**. ParentPilot uses Avahi for discovery; client-isolated guest networks may prevent it.
+
+If the compatibility screen refuses setup, **do not force it using Terminal commands**. The current fullscreen/PIN overlay needs XFCE on X11, and a different desktop requires dedicated support.
+
+**Not yet included:** the optional parent-triggered screenshot feature. It will require separate authentication, a visible child notification and additional device testing before release.
