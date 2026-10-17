@@ -33,6 +33,6 @@ with tempfile.TemporaryDirectory() as d:
     assert all('value' not in elem.attrib for elem in x.findall(".//property[@type='array']")+x.findall(".//property[@type='empty']"))
     assert list((home/'.config/xfce4/panel').glob('launcher-*/**/*.desktop'))
 import py_compile
-for py in [R/'parentpilot/wizard.py',R/'parentpilot/setup_root.py',R.parent/'desktop/max_desktop.py',R.parent/'desktop/parentpilot_lock_media.py']:
+for py in [R/'parentpilot/wizard.py',R/'parentpilot/preflight.py',R/'parentpilot/setup_root.py',R.parent/'desktop/max_desktop.py',R.parent/'desktop/parentpilot_lock_media.py']:
     py_compile.compile(str(py),doraise=True)
 print('PASS: installer inputs, child panel XML and Python syntax; no accounts or services modified')
