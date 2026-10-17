@@ -99,7 +99,7 @@ with tempfile.TemporaryDirectory() as tmp:
     request_id = ctrl.screen_state(desktop=True)['screen_request']
     assert ctrl.screen_state()['screen_status'] == 'pending'
     assert 'screen_request' not in ctrl.screen_state()
-    jpeg = b'\xff\xd8\\xff' + bytes(140) + b'\xff\xd9'
+    jpeg = b'\xff\xd8\xff' + bytes(140) + b'\xff\xd9'
     anon = urllib.request.Request(url+'/screen.jpg')
     try:
         urllib.request.urlopen(anon,context=ssl._create_unverified_context()).read()
