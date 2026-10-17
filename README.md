@@ -98,3 +98,10 @@ The app uses `NsdManager` service discovery for `_maxfamily._tcp.` on local netw
 ## Publishing
 
 This source can be placed in **one GitHub repository** containing `desktop/` and `android-app/`. The `LICENSE.txt` currently uses MIT. Before releasing publicly, review licensing/attribution, perform security testing and consider publishing prebuilt signed APKs via GitHub Releases (not by committing a signing key).
+
+
+## ParentPilot 0.5 Preview 2 — beginner-friendly Debian-family installer
+
+The latest fresh-install `.deb` has a branded ParentPilot setup wizard with a **read-only compatibility check**, automatically suggested child username, separate parent PIN, curated XFCE child desktop, YouTube/Netflix shortcuts, optional Chromium filtering, and Android Wi-Fi discovery. It accepts **Debian/Ubuntu-family XFCE on X11**, not all Debian desktops. It refuses existing ParentPilot setups. **Never install this testing preview on Max's already working laptop.**
+
+See [the installer guide and supported-system matrix](packaging/README.md). Full VM/device testing and the optional parent-requested screen preview remain future work.

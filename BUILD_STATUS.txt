@@ -1,11 +1,11 @@
-Family Control reusable prototype source status
-============================================
-Linux server/PIN/timer: Python syntax + included server tests: PASSED
-Dynamic child display name and seconds: PASSED
-Installer: bash syntax checked, NOT installed on a clean Mint machine
-Android: Debug APK compiled and APK artifact uploaded by GitHub Actions; not tested on a physical phone
-Remote Tailscale: configuration script included, NOT activated or tested
-The existing working Max laptop has NOT been changed.
-Use the GitHub-ready ZIP for source review/development, not a public release or unsupervised child-safety guarantee.
+ParentPilot 0.5 Preview 2 — 2026-10-17
 
-ParentPilot branding integrated into Linux parental overlay, HTTPS dashboard and Android launcher.
+STATUS: FRESH INSTALL PREVIEW — NOT A VERIFIED UNIVERSAL DEBIAN RELEASE
+
+Included: branded wizard, read-only operating-system and desktop checks, suggested child username, separate parent PIN, XFCE child-only shortcuts/panel, optional LightDM autologin, browser policy warning, Avahi automatic Wi-Fi discovery, Android dashboard connection, and existing single-window video/audio lock.
+
+Offline tests: successful installer validation, simulated Debian/Ubuntu/Mint/MX checks, timer/PIN/API tests, Python compilation and GitHub Actions Debian build.
+
+NOT YET VERIFIED: full account provisioning on a fresh Debian/Ubuntu/Mint machine, Wayland/GNOME/KDE/Cinnamon support, full repair/uninstall, optional child-visible parental screen preview, real Netflix DRM.
+
+DO NOT INSTALL THIS PREVIEW OVER MAX'S EXISTING PARENTPILOT.

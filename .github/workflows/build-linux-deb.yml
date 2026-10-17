@@ -1,4 +1,4 @@
-name: Build ParentPilot Linux Mint DEB
+name: Build ParentPilot Debian-family DEB
 
 on:
   push:
@@ -27,6 +27,7 @@ jobs:
       - name: Check Python and installer
         run: |
           python3 packaging/test_installer.py
+          python3 packaging/test_compatibility.py
           python3 -m compileall -q desktop packaging/parentpilot
           bash -n packaging/build-deb.sh
       - name: Test parent timer and PIN API
@@ -36,14 +37,14 @@ jobs:
         run: bash packaging/build-deb.sh "$GITHUB_WORKSPACE/dist"
       - name: Inspect package and protect maintainer scripts
         run: |
-          test -s dist/parentpilot_0.4.0~preview1_all.deb
-          dpkg-deb --info dist/parentpilot_0.4.0~preview1_all.deb
-          dpkg-deb --contents dist/parentpilot_0.4.0~preview1_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
-          dpkg-deb --contents dist/parentpilot_0.4.0~preview1_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+          test -s dist/parentpilot_0.5.0~preview2_all.deb
+          dpkg-deb --info dist/parentpilot_0.5.0~preview2_all.deb
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview2_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview2_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
-          name: ParentPilot-Linux-Mint-DEB-v0.4.0-preview1
+          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview2
           path: dist/*.deb
           if-no-files-found: error
           retention-days: 30
