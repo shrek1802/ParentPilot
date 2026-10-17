@@ -215,6 +215,8 @@ class Control:
             with self.lock:
                 self._fresh_day()
                 self.active = active
+                # Purge ephemeral images on schedule even if no parent reconnects.
+                self.screen_state()
                 if active and self.granted() and not self.state['unlimited']:
                     self.state['used_seconds'] = min(86400, self.state['used_seconds'] + elapsed)
                 if now - previous_save >= 5:
