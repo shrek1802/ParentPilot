@@ -57,7 +57,7 @@ def validate(data):
         raise ValueError('Choose a less obvious six-digit parent PIN.')
     if data.get('youtube') not in ('kids','supervised'):
         raise ValueError('Select the YouTube Kids or supervised option.')
-    for flag in ('netflix','autologin','family_filter'):
+    for flag in ('netflix','autologin','family_filter','screen_view'):
         if type(data.get(flag)) is not bool: raise ValueError(f'Invalid {flag} option.')
     return name, user, password, pin
 
@@ -79,7 +79,7 @@ def check_host(user, autologin=False, family_filter=False):
     try: pwd.getpwnam(user)
     except KeyError: pass
     else: raise RuntimeError('That Linux user already exists. Choose another username.')
-    if not APP.joinpath('max_desktop.py').is_file() or not APP.joinpath('parentpilot_lock_media.py').is_file():
+    if not all(APP.joinpath(f).is_file() for f in ('max_desktop.py', 'parentpilot_lock_media.py', 'screen_view.py')):
         raise RuntimeError('ParentPilot files are incomplete. Reinstall the .deb.')
     return status
 
@@ -194,7 +194,7 @@ def configure_chromium(mode, family_filter):
     POLICY.chmod(0o644)
 
 
-def install_timer(user, name, parent_pin, autologin):
+def install_timer(user, name, parent_pin, autologin, screen_view=False):
     if not run('getent','passwd',user).stdout: raise RuntimeError('Child account not found.')
     run('id','-u',user)
     if not shutil.which('setfacl'): raise RuntimeError('acl tools unavailable.')
@@ -203,7 +203,7 @@ def install_timer(user, name, parent_pin, autologin):
     except KeyError: run('useradd','--system','--user-group','--home-dir',str(STATE),'--shell','/usr/sbin/nologin','--no-create-home','maxfamily')
     TARGET.mkdir(mode=0o755,parents=True,exist_ok=True)
     (TARGET/'assets').mkdir(mode=0o755,exist_ok=True)
-    for name_file in ('control_server.py','max_desktop.py','max_desktop_supervisor.py','parentpilot_lock_media.py','admin.py'):
+    for name_file in ('control_server.py','max_desktop.py','max_desktop_supervisor.py','parentpilot_lock_media.py','admin.py','screen_view.py'):
         shutil.copy2(APP/name_file,TARGET/name_file)
         (TARGET/name_file).chmod(0o644)
     for pic in ('parentpilot-icon-128.png','parentpilot-icon-64.png','parentpilot-icon.png'):
@@ -215,7 +215,9 @@ def install_timer(user, name, parent_pin, autologin):
     os.chown(STATE,pwd.getpwnam('maxfamily').pw_uid,cfg_group)
     sys.path.insert(0,str(TARGET))
     from control_server import atomic_write, hash_password, clean_state
-    atomic_write(CFG/'config.json', {'child':user,'display_name':name,'password':hash_password(parent_pin)})
+    atomic_write(CFG/'config.json', {'child':user, 'display_name':name,
+                                     'password':hash_password(parent_pin),
+                                     'screen_view_enabled':screen_view})
     os.chown(CFG/'config.json',0,cfg_group); (CFG/'config.json').chmod(0o640)
     token=CFG/'desktop-token'; token.write_text(secrets.token_hex(32)+'\n',encoding='ascii')
     os.chown(token,0,cfg_group);token.chmod(0o640)
@@ -289,7 +291,7 @@ def main():
     run('chpasswd',input=f'{user}:{password}\n')
     child_desktop(user,name,data['youtube'],data['netflix'])
     configure_chromium(data['youtube'],data['family_filter'])
-    install_timer(user,name,pin,data['autologin'])
+    install_timer(user,name,pin,data['autologin'],data['screen_view'])
     print('SUCCESS: ParentPilot is installed for '+name+'.\n')
     print('The child desktop will be ready next time they sign in. Parental controls are paused until approved.')
     print('Browse to https://<laptop-ip>:8743 from your phone, or use the ParentPilot Android app on the same Wi-Fi.')
