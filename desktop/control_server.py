@@ -26,7 +26,8 @@ LOCAL_USERS = {'127.0.0.1', '::1'}
 CONFIG_FILE = CONFIG_DIR / 'config.json'
 STATE_FILE = DATA_DIR / 'state.json'
 DESKTOP_TOKEN_FILE = CONFIG_DIR / 'desktop-token'
-MAX_SCREEN_BYTES = 4 * 1024 * 1024  # bounded, in-memory, one approved JPEG
+MAX_SCREEN_BYTES = 4 * 1024 * 1024  # bounded, in-memory, one parent-requested JPEG
+SCREEN_REQUEST_INTERVAL = 45  # prevents automated rapid-fire captures
 
 
 def new_day():
@@ -103,8 +104,9 @@ class Control:
             raise RuntimeError('Desktop auth token missing or invalid. Restore backup or re-run the v0.2 update.')
         self.last_tick = time.monotonic()
         self.active = False
-        # Volatile screen previews: opt-in at installation AND consent on every request.
-        # No recordings, disk writes, streaming, or background capture.
+        # A parent must opt in at fresh setup, then authenticate each browser session.
+        # Each screen request is visible on the child's desktop before capture.
+        # No recordings, disk writes, continuous streaming, or hidden capture.
         self.screen_request = ''
         self.screen_requested_at = 0.0
         self.screen_status = 'idle'
@@ -115,8 +117,11 @@ class Control:
         if self.cfg.get('screen_view_enabled') is not True:
             raise ValueError('Screen viewing has not been enabled on this laptop.')
         with self.lock:
+            now = time.monotonic()
+            if self.screen_requested_at and now - self.screen_requested_at < SCREEN_REQUEST_INTERVAL:
+                raise ValueError('Please wait at least 45 seconds between screen pictures.')
             self.screen_request = secrets.token_urlsafe(24)
-            self.screen_requested_at = time.monotonic()
+            self.screen_requested_at = now
             self.screen_status = 'pending'
             self.screen_image = None
             self.screen_image_until = 0.0
@@ -145,7 +150,7 @@ class Control:
             if not request_id or not hmac.compare_digest(request_id, self.screen_request):
                 return False
             if image is None:
-                self.screen_status = 'declined'
+                self.screen_status = 'failed'
                 self.screen_request = ''
                 return True
             if not (128 <= len(image) <= MAX_SCREEN_BYTES and
@@ -318,15 +323,19 @@ def dashboard_html(s, csrf, flash=''):
     screen_card = ''
     if s.get('screen_enabled'):
         condition = s.get('screen_status', 'idle')
-        image = ('<p><img src="/screen.jpg" alt="Child-approved screen preview" '
+        image = ('<p><img src="/screen.jpg" alt="Parent-requested screen preview" '
                  'style="max-width:100%;border-radius:12px"></p>') if condition == 'ready' else ''
         screen_card = (f'<section class="card"><h2>View child screen (optional)</h2>'
-                       f'<p class="small">A one-time picture only, not a live stream. '
-                       f'The child sees a request and must allow every picture. '
-                       f'Pictures expire after 30 seconds and are never stored on disk.</p>'
+                       f'<p class="small">A one-time picture, not a live stream. '
+                       f'Only an authenticated parent can request it. '
+                       f'Your child sees a clear viewing notification before a picture is taken, '
+                       f'but does not need to approve each request. '
+                       f'Pictures expire after 30 seconds and are never saved to disk. '
+                       f'Requests are limited to one every 45 seconds.</p>'
                        f'<p>Status: {esc(condition)}</p>'
-                       f'{form("request-screen", "Ask for a screen preview")}{image}</section>')
-    return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title><link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style></head>
+                       f'{form("request-screen", "View one screen picture")}{image}</section>')
+    refresh = '<meta http-equiv="refresh" content="3">' if s.get('screen_status') == 'pending' else ''
+    return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title>{refresh}<link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style></head>
 <body><main><header><div class="brand"><img class="brand-icon" src="/assets/parentpilot-icon.png" alt="ParentPilot"><h1>ParentPilot</h1></div>{form('logout','Sign out')}</header>
 {f'<div class="msg">{esc(flash)}</div>' if flash else ''}
 <section class="card primary"><div class="eyebrow">{child_name}'s laptop · {esc(s['day'])}</div><div class="status">{esc(mode)}</div><div class="stat">{esc(rem)}</div><div class="progress"><div class="bar" style="width:{pct}%"></div></div><p class="small">Used today: {esc(used)} · <span id="presence">{ 'Child is using the laptop' if s['max_active'] else 'Child is not at the laptop'}</span></p></section>
@@ -468,19 +477,19 @@ class Handler(BaseHTTPRequestHandler):
             if not self.ctl.complete_screen(request_id, image):
                 self.send_bytes('Request expired, invalid, or not enabled', 409); return
             self.send_bytes('OK', content_type='text/plain'); return
-        if self.path not in ('/login', '/action', '/local-grant', '/api/screen/decline'):
+        if self.path not in ('/login', '/action', '/local-grant', '/api/screen/fail'):
             self.send_bytes('Not found', 404); return
         if not self.headers.get('Content-Type','').lower().startswith('application/x-www-form-urlencoded'):
             self.send_bytes('Invalid content type', 415); return
         fields = self.read_form()
         if fields is None:
             self.send_bytes('Invalid form', 400); return
-        if self.path == '/api/screen/decline':
+        if self.path == '/api/screen/fail':
             if not self.desktop_authorized():
                 self.send_bytes('Forbidden', 403); return
             request_id = fields.get('request', '')
             if len(request_id) > 128 or not self.ctl.complete_screen(request_id):
-                self.send_bytes('Request expired', 409); return
+                self.send_bytes('Request expired or invalid', 409); return
             self.send_bytes('OK', content_type='text/plain'); return
         if self.path == '/login':
             if not self.password_ok(fields.get('password','')):
