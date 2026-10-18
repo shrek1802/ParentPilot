@@ -126,6 +126,9 @@ class MaxUI:
         tk.Button(form, text='Add time and return to desktop', command=self.parent_grant, bg='#0284c7', fg=WHITE, activebackground='#0369a1', font=('Sans', 12, 'bold'), padx=14, pady=10, borderwidth=0).pack(fill='x')
         self.msg = tk.Label(form, text='', fg='#fca5a5', bg=PANEL, font=('Sans', 10), wraplength=540)
         self.msg.pack(pady=(8, 0))
+        self.connection_warning = tk.Label(base, text='', fg='#fcd34d', bg=BG,
+                                           font=('Sans', 10, 'bold'), wraplength=620)
+        self.connection_warning.pack(pady=(10, 0))
         bottom = tk.Frame(base, bg=BG)
         bottom.pack(pady=(23, 0))
         tk.Button(bottom, text='Switch user', command=self.switch_user, bg='#334155', fg=WHITE, font=('Sans', 11), padx=12, pady=8, borderwidth=0).pack(side='left', padx=10)
@@ -260,10 +263,22 @@ class MaxUI:
             self.offline = True
 
         if state is None:
-            # Fail-open when service is OFF, so a parent can recover without being locked out.
-            self.hide_overlay()
-            if self.widget is None: self.create_widget()
-            self.indicator.configure(text='Parent control offline')
+            # A single failed HTTPS poll must never remove an established lock.
+            # If the timer service is genuinely down, the adult can still use
+            # Switch user on the same overlay to repair it from their account.
+            # Prior to ANY valid state we keep the previous recovery behaviour.
+            if (self.overlay is not None or
+                    (self.last_state is not None and not self.last_state.get('allowed', True))):
+                self.hide_widget()
+                if self.overlay is None: self.create_overlay()
+                self.connection_warning.configure(
+                    text='ParentPilot connection interrupted. Screen stays paused. '
+                         'A parent can switch users to check the control service.')
+                self.guard.enforce(self.overlay)
+            else:
+                self.hide_overlay()
+                if self.widget is None: self.create_widget()
+                self.indicator.configure(text='Parent control offline — ask a parent')
         elif state['allowed']:
             self.hide_overlay()
             if self.widget is None: self.create_widget()
@@ -271,6 +286,7 @@ class MaxUI:
         else:
             self.hide_widget()
             if self.overlay is None: self.create_overlay()
+            self.connection_warning.configure(text='')
             if state['paused']:
                 self.title_label.configure(text='Laptop paused')
                 self.description.configure(text='Mum or Dad can resume your time from their phone, or approve some more time here.')
@@ -279,7 +295,8 @@ class MaxUI:
                 self.description.configure(text='Your time is up. Ask Mum or Dad if you can have some more time.')
             # The parent PIN controls are in THIS foreground window, not behind an extra mask.
             self.guard.enforce(self.overlay)
-        self.last_state = state
+        if state is not None:
+            self.last_state = state
         if state is not None and state.get('allowed') and state.get('screen_enabled'):
             request_id = state.get('screen_request', '')
             if request_id and request_id not in self.seen_screen_requests:
