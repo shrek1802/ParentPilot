@@ -203,7 +203,7 @@ def install_timer(user, name, parent_pin, autologin, screen_view=False):
     except KeyError: run('useradd','--system','--user-group','--home-dir',str(STATE),'--shell','/usr/sbin/nologin','--no-create-home','maxfamily')
     TARGET.mkdir(mode=0o755,parents=True,exist_ok=True)
     (TARGET/'assets').mkdir(mode=0o755,exist_ok=True)
-    for name_file in ('control_server.py','max_desktop.py','max_desktop_supervisor.py','parentpilot_lock_media.py','admin.py','screen_view.py'):
+    for name_file in ('control_server.py','max_desktop.py','max_desktop_supervisor.py','parentpilot_lock_media.py','admin.py','screen_view.py','parentpilot_screen_parent.js'):
         shutil.copy2(APP/name_file,TARGET/name_file)
         (TARGET/name_file).chmod(0o644)
     for pic in ('parentpilot-icon-128.png','parentpilot-icon-64.png','parentpilot-icon.png'):
