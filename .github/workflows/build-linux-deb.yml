@@ -24,6 +24,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Install tkinter for headless desktop regression
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-tk
+
       - name: Check Python and installer
         run: |
           python3 packaging/test_installer.py
