@@ -32,7 +32,7 @@ To let the laptop announce its presence, run the existing optional `desktop/enab
 
 For the **direct Wi-Fi fallback**, enter only the laptop's current private IPv4 address (for example `192.168.1.249`) or `https://192.168.1.249:8743/`. The app opens the HTTPS parent PIN dashboard in the phone's browser and saves the private IP for later; it never saves the PIN. This direct connection works when mDNS is blocked but the phone can still reach the laptop.
 
-If Android doesn't grant discovery permissions, open **Settings → Apps → ParentPilot → Permissions** and allow the nearby-device permission, when available. Check both are on the same local network (not an isolated guest Wi-Fi). Some phone hotspot and caravan Wi-Fi systems block multicast or client-to-client traffic. If the IP address changes, update the saved address.
+If Android doesn't grant discovery permissions, open **Settings → Apps → ParentPilot → Permissions** and allow the nearby-device permission, when available. Check both are on the same local network (not an isolated guest Wi-Fi). Some mobile hotspots, guest networks and public Wi-Fi systems block multicast or client-to-client traffic. If the IP address changes, update the saved address.
 
 **Upgrading test APKs:** These are debug builds. On some phones a later build cannot replace an older APK because the debug signing key differs. If Android reports a signature/package conflict, uninstall only the old **ParentPilot Android app** and install the new APK. This doesn't touch the laptop timer, although you'll need to re-enter the saved phone connection details.
 
