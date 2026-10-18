@@ -370,6 +370,19 @@ button:active{filter:brightness(1.2)}button.alt{background:#344964}button.danger
 .row{display:flex;align-items:flex-end;gap:10px}.row input{flex:1;min-width:0}.row button{flex:none}
 .msg{background:#432f3e;border:1px solid #c0788b;border-radius:9px;padding:10px;margin:10px 0}.ok{color:#79e5d3}
 .progress{height:11px;background:#344762;border-radius:30px;overflow:hidden;margin:12px 0}.bar{height:11px;background:linear-gradient(90deg,#39dbbc,#63c7f7);border-radius:30px}
+
+.screen-preview{display:block;width:100%;max-width:100%;border-radius:12px;cursor:zoom-in;margin:10px 0}
+.saved-picture{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+.saved-picture img{width:125px;max-width:38vw;border-radius:8px;cursor:zoom-in}
+.saved-picture-detail{flex:1;min-width:0}.saved-picture-detail form{display:inline-block;margin-left:12px}
+.saved-picture-detail a{color:#9be9e2}.saved-picture-detail button{min-height:36px;padding:7px 12px;font-size:.9rem}
+#screen-modal{width:min(96vw,1100px);height:92vh;max-height:92vh;padding:0;border:1px solid #60789e;border-radius:14px;background:#101d35;color:white}
+#screen-modal::backdrop{background:#020617ed}
+#screen-modal-toolbar{display:flex;align-items:center;gap:9px;justify-content:center;padding:10px;position:sticky;top:0;background:#19243a;z-index:2}
+#screen-modal-toolbar button{min-height:42px}
+#screen-modal-area{overflow:auto;width:100%;height:calc(100% - 70px);touch-action:pan-x pan-y}
+#screen-modal-image{width:100%;height:auto;max-width:none;display:block}
+[hidden]{display:none!important}
 @media(max-width:400px){.actions{grid-template-columns:1fr}.row{flex-wrap:wrap}.row button{width:100%}.stat{font-size:2.65rem}}
 '''
 
@@ -402,22 +415,63 @@ def dashboard_html(s, csrf, flash=''):
     pct = max(0, min(100, int(s['used_seconds']/total*100))) if total > 0 else 0
     def form(action, label, css='alt'):
         return f'<form action="/action" method="post"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{action}"><button class="{css}">{label}</button></form>'
+
     screen_card = ''
+    screen_modal = ''
+    screen_script = ''
     if s.get('screen_enabled'):
         condition = s.get('screen_status', 'idle')
-        image = ('<p><img src="/screen.jpg" alt="Parent-requested screen preview" '
-                 'style="max-width:100%;border-radius:12px"></p>') if condition == 'ready' else ''
-        screen_card = (f'<section class="card"><h2>View child screen (optional)</h2>'
-                       f'<p class="small">A one-time picture, not a live stream. '
-                       f'Only an authenticated parent can request it. '
-                       f'Your child sees a clear viewing notification before a picture is taken, '
-                       f'but does not need to approve each request. '
-                       f'Pictures expire after 30 seconds and are never saved to disk. '
-                       f'Requests are limited to one every 45 seconds.</p>'
-                       f'<p>Status: {esc(condition)}</p>'
-                       f'{form("request-screen", "View one screen picture")}{image}</section>')
-    refresh = '<meta http-equiv="refresh" content="3">' if s.get('screen_status') == 'pending' else ''
-    return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title>{refresh}<link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style></head>
+        ready = condition == 'ready'
+        hidden = '' if ready else ' hidden'
+        initial_img = ' src="/screen.jpg"' if ready else ''
+        gallery_entries = []
+        for entry in s.get('saved_pictures', []):
+            picture_id = esc(entry['id'])
+            picture_url = f'/saved-screen/{picture_id}'
+            when = esc(entry['time'])
+            gallery_entries.append(
+                f'<div class="saved-picture"><a href="{picture_url}" class="open-screen-viewer" '
+                f'data-screen-src="{picture_url}" aria-label="Enlarge saved picture">'
+                f'<img src="{picture_url}" alt="Saved picture from {when}" loading="lazy"></a>'
+                f'<div class="saved-picture-detail"><strong>{when}</strong><p>'
+                f'<a href="{picture_url}?download=1">Download</a>'
+                f'<form action="/action" method="post" data-delete-screen>'
+                f'<input type="hidden" name="csrf" value="{esc(csrf)}">'
+                f'<input type="hidden" name="action" value="delete-saved-screen">'
+                f'<input type="hidden" name="saved_id" value="{picture_id}">'
+                f'<button class="danger" type="submit">Delete</button></form></p></div></div>')
+        gallery_html = ''.join(gallery_entries) or '<p class="small">No saved pictures yet.</p>'
+        gallery_count = len(s.get('saved_pictures', []))
+        screen_card = (f'<section class="card" id="screen-card"><h2>View child screen</h2>'
+                       f'<p class="small">A parent can request one screen picture. '
+                       f'The child sees a notification before capture. Unsaved pictures '
+                       f'expire after two minutes. Saved pictures stay until you delete them; '
+                       f'nothing is saved automatically.</p>'
+                       f'<p>Picture status: <strong id="screen-status">{esc(condition)}</strong></p>'
+                       f'{form("request-screen", "Take one screen picture")}'
+                       f'<div id="screen-preview-container"{hidden}><p>'
+                       f'<a href="/screen.jpg" class="open-screen-viewer" '
+                       f'id="screen-preview-link" data-screen-src="/screen.jpg">'
+                       f'<img id="screen-preview" class="screen-preview"{initial_img} '
+                       f'alt="Tap to enlarge this screen picture"></a>'
+                       f'<small>Tap to enlarge and zoom.</small></p></div>'
+                       f'<form id="save-screen-form" action="/action" method="post"{hidden}>'
+                       f'<input type="hidden" name="csrf" value="{esc(csrf)}">'
+                       f'<input type="hidden" name="action" value="save-screen">'
+                       f'<button type="submit">Save this picture</button></form>'
+                       f'<hr style="border:0;border-top:1px solid var(--border);margin:24px 0">'
+                       f'<h3>Saved pictures ({gallery_count}/{MAX_SAVED_PICTURES})</h3>'
+                       f'<p class="small">Only manually saved pictures are kept privately '
+                       f'on this laptop. Download them to your phone or delete them here.</p>'
+                       f'{gallery_html}</section>')
+        screen_modal = ("""<dialog id="screen-modal" aria-label="Enlarged screen picture">
+<div id="screen-modal-toolbar"><button type="button" id="screen-close">Close</button>
+<button type="button" id="screen-zoom-out" class="alt">−</button>
+<button type="button" id="screen-zoom-in" class="alt">+</button>
+<button type="button" id="screen-zoom-fit" class="alt">Fit</button></div>
+<div id="screen-modal-area"><img id="screen-modal-image" alt="Enlarged screen picture"></div></dialog>""")
+        screen_script = '<script src="/assets/parentpilot-screen-parent.js" defer></script>'
+    return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title><link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style>{screen_script}</head>
 <body><main><header><div class="brand"><img class="brand-icon" src="/assets/parentpilot-icon.png" alt="ParentPilot"><h1>ParentPilot</h1></div>{form('logout','Sign out')}</header>
 {f'<div class="msg">{esc(flash)}</div>' if flash else ''}
 <section class="card primary"><div class="eyebrow">{child_name}'s laptop · {esc(s['day'])}</div><div class="status">{esc(mode)}</div><div class="stat">{esc(rem)}</div><div class="progress"><div class="bar" style="width:{pct}%"></div></div><p class="small">Used today: {esc(used)} · <span id="presence">{ 'Child is using the laptop' if s['max_active'] else 'Child is not at the laptop'}</span></p></section>
@@ -426,7 +480,7 @@ def dashboard_html(s, csrf, flash=''):
 <section class="card"><h2>Add extra time</h2><div class="actions">{form('add15','+15 minutes','')}{form('add30','+30 minutes','')}{form('add60','+1 hour','')}{form('add120','+2 hours','')}</div>
 <form action="/action" method="post"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="add"><div class="row"><div><label for="bonus">Custom minutes</label><input id="bonus" name="minutes" type="number" min="1" max="720" value="20" required></div><button>Add time</button></div></form></section>
 <section class="card"><h2>Access controls</h2><p class="small">Pause immediately hides the child's desktop; Resume restores access while your child has time remaining.</p><div class="actions">{form('pause','Pause laptop','danger')}{form('resume','Resume laptop','')}{form('unlimited','Unlimited today')}{form('managed','Managed time')}</div><p></p>{form('end','End time for today','danger')}</section>
-{screen_card}
+{screen_card}{screen_modal}
 <p class="small">For phone use, bookmark this page or Add to Home Screen. Controls work over Wi-Fi or a private VPN such as Tailscale. Your child's screen is restored without closing open apps, but this first version is not tamper-proof against a technically skilled child.</p></main></body></html>'''
 
 
@@ -943,7 +997,6 @@ def dashboard_html(s, csrf, flash=''):
                        f'Requests are limited to one every 45 seconds.</p>'
                        f'<p>Status: {esc(condition)}</p>'
                        f'{form("request-screen", "View one screen picture")}{image}</section>')
-    refresh = '<meta http-equiv="refresh" content="3">' if s.get('screen_status') == 'pending' else ''
     return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title>{refresh}<link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style></head>
 <body><main><header><div class="brand"><img class="brand-icon" src="/assets/parentpilot-icon.png" alt="ParentPilot"><h1>ParentPilot</h1></div>{form('logout','Sign out')}</header>
 {f'<div class="msg">{esc(flash)}</div>' if flash else ''}
