@@ -32,7 +32,7 @@ SCREEN_REQUEST_INTERVAL = 45  # prevents automated rapid-fire captures
 SCREEN_PREVIEW_SECONDS = 120  # unsaved preview expires after two minutes
 MAX_SAVED_PICTURES = 20
 SAVED_PICTURES_DIR = DATA_DIR / 'saved-screens'
-SAVED_ID = re.compile(r'^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{20}\\.jpg$')
+SAVED_ID = re.compile(r'^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{20}[.]jpg$')
 VIEWER_JS = Path(__file__).resolve().parent / 'parentpilot_screen_parent.js'
 
 
