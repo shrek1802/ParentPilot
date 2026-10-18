@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview3
+VERSION=0.5.0~preview4
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -20,12 +20,12 @@ Homepage: https://github.com/shrek1802/ParentPilot
 Description: ParentPilot family screen-time setup for Debian-family XFCE/X11
  Guided graphical setup creates a non-admin child account, parent PIN,
  screen-time timer, local phone controls, and a curated child desktop.
- Optional consented parent screen previews are off by default.
+ Optional parent-requested screen pictures and private saved gallery are off by default.
  Installs no child account or timer until an administrator finishes the wizard.
 EOF
 # Debian control files cannot expand misc Depends without debhelper.
 sed -i 's/Depends: ${misc:Depends}, /Depends: /' "$STAGING/DEBIAN/control"
-for f in control_server.py max_desktop.py max_desktop_supervisor.py parentpilot_lock_media.py admin.py screen_view.py; do
+for f in control_server.py max_desktop.py max_desktop_supervisor.py parentpilot_lock_media.py admin.py screen_view.py parentpilot_screen_parent.js; do
     install -m 0644 "$ROOT/desktop/$f" "$STAGING/usr/lib/parentpilot/desktop/$f"
 done
 for f in parentpilot-icon.png parentpilot-icon-128.png parentpilot-icon-64.png; do
