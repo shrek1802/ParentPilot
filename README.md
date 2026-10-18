@@ -39,8 +39,8 @@ For tested-versus-candidate environments and dependencies, see the [Linux instal
 ParentPilot is still a test release. **Use a spare machine or disposable virtual machine while evaluating the installer.** Current Debian packages are intended for **fresh setups only**, not upgrades of an existing configured parental-control installation. The installer is designed to refuse an existing setup rather than overwrite accounts, PINs or saved time.
 
 1. Open [Linux DEB builds on GitHub Actions](https://github.com/shrek1802/ParentPilot/actions/workflows/build-linux-deb.yml) and select an appropriate successful build. Preview 6 is available in the [draft development pull request](https://github.com/shrek1802/ParentPilot/pull/7); it is **not a stable release**.
-2. Under **Artifacts**, download the Linux DEB artifact (a ZIP containing a \`.deb\` file). GitHub may require sign-in to download CI artifacts.
-3. On an XFCE/X11 laptop, sign into the **adult administrator** account. Open the extracted \`.deb\` with the system package installer.
+2. Under **Artifacts**, download the Linux DEB artifact (a ZIP containing a `.deb` file). GitHub may require sign-in to download CI artifacts.
+3. On an XFCE/X11 laptop, sign into the **adult administrator** account. Open the extracted `.deb` with the system package installer.
 4. From the applications menu, open **ParentPilot Family Setup**.
 5. Follow the compatibility check and setup wizard: choose a child name and login, child password, **separate parent PIN**, and optional content shortcuts, filtering, auto-login and screen pictures.
 6. Confirm the review screen and approve the system administrator prompt. Set up supervised YouTube and Netflix Kids profiles **inside those services** separately.
@@ -73,21 +73,21 @@ This repository includes the Linux desktop service, the graphical setup wizard, 
 
 | Path | Contents |
 | --- | --- |
-| \`desktop/\` | Screen-time service, child desktop, lock/media helpers and service tests |
-| \`packaging/\` | Linux first-run wizard, compatibility checks and DEB packaging |
-| \`android-app/\` | Android companion app source |
-| \`.github/workflows/\` | Automated Linux DEB and Android debug-APK builds |
+| `desktop/` | Screen-time service, child desktop, lock/media helpers and service tests |
+| `packaging/` | Linux first-run wizard, compatibility checks and DEB packaging |
+| `android-app/` | Android companion app source |
+| `.github/workflows/` | Automated Linux DEB and Android debug-APK builds |
 
 From the repository root, run:
 
-\`\`\`bash
+```bash
 python3 desktop/test_server.py
 python3 desktop/test_lock_stability.py
 python3 desktop/test_supervisor_singleton.py
 python3 packaging/test_installer.py
 python3 packaging/test_compatibility.py
 bash packaging/build-deb.sh
-\`\`\`
+```
 
 The automated tests exercise logic and package contents, but **do not replace testing on real XFCE/X11 desktops**. In particular, the first-run experience, screenshot capture, window stacking, audio behaviour and application restrictions need cross-distribution testing.
 
