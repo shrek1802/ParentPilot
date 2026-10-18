@@ -1,4 +1,4 @@
-# ParentPilot 0.5 Preview 4 — family setup installer
+# ParentPilot 0.5 Preview 5 — family setup installer
 
 **This is a fresh-install testing preview for Debian-family Linux with XFCE on X11**, not a universal Debian package or an upgrade for a configured Max Family Control installation.
 
@@ -37,7 +37,7 @@ Being Debian-based **does not mean** the screen-time lock works with every deskt
 - Avahi `_maxfamily._tcp` announces the laptop locally; the Android app finds it on the same Wi-Fi when the router allows mDNS. Do not expose parental port 8743 directly to the internet.
 - **LightDM is optional**; without it, do not select automatic child login. Other display managers are not automatically reconfigured.
 - Removing the `.deb` preserves existing child data; a fully guided repair/uninstall wizard is still planned. Failure part-way through provisioning can leave a partially created child account.
-- The optional **View Child's Screen** in Preview 4 is a **single parent-authorised picture**, not live video. It is OFF unless an administrator enables the feature during fresh setup. A signed-in parent requests a picture and the child sees a **clear on-screen viewing notice before capture and for 30 seconds afterwards**, without an approval prompt. Unsaved pictures live in service memory for **two minutes**. Parents may tap to enlarge/zoom and deliberately **Save this picture** to a private gallery (up to 20 JPG files, owner-only permissions), revisit, download or delete pictures. No screenshot is saved automatically. Requests are limited to one every 45 seconds. Background status polling updates only the picture panel; it does not repeatedly reload the dashboard. No microphone/camera access, background recording or live video.
+- The optional **View Child's Screen** in Preview 5 is a **single parent-authorised picture**, not live video. It is OFF unless an administrator enables the feature during fresh setup. A signed-in parent requests a picture and the child sees a **clear on-screen viewing notice before capture and for 30 seconds afterwards**, without an approval prompt. Unsaved pictures live in service memory for **two minutes**. Parents may tap to enlarge/zoom and deliberately **Save this picture** to a private gallery (up to 20 JPG files, owner-only permissions), revisit, download or delete pictures. No screenshot is saved automatically. Requests are limited to one every 45 seconds. Background status polling updates only the picture panel; it does not repeatedly reload the dashboard. No microphone/camera access, background recording or live video.
 - This feature requires GTK/Gdk on an X11 child session, and must be tested on a disposable XFCE laptop/VM before relying on it. If the child desktop is not running, the request expires without an image. A failure to capture is reported without silently retrying. Each new picture requires a fresh parent request (not a new child approval).
 
 ## Build and test
@@ -68,4 +68,6 @@ The preflight tests simulate distro identities and verify that unsupported syste
 
 If the compatibility screen refuses setup, **do not force it using Terminal commands**. The current fullscreen/PIN overlay needs XFCE on X11, and a different desktop requires dedicated support.
 
-**New in Preview 4:** parent-requested, child-visible screen pictures with **tap-to-zoom**, **explicit save/download/delete**, **20-picture private gallery**, and **no full-page refresh flickering**. This is experimental, **not continuous remote screen viewing**. Test it on a spare device first, and do not deploy Preview 4 on Max's working laptop.
+**Lock stability in Preview 5:** a previously established pause/expiry lock remains displayed during a temporary local-control-service error, with an adult recovery path via Switch user. The media guard uses X11 window stacking instead of repeatedly lifting the Tk window, reducing focus flicker. If the backend is actually offline, review `sudo journalctl -u max-family-control.service -b -n 100 --no-pager`; the UI fix does not resolve an underlying service outage.
+
+**New in Preview 5:** parent-requested, child-visible screen pictures with **tap-to-zoom**, **explicit save/download/delete**, **20-picture private gallery**, and **no full-page refresh flickering**. This is experimental, **not continuous remote screen viewing**. Test it on a spare device first, and do not deploy Preview 5 on Max's working laptop.
