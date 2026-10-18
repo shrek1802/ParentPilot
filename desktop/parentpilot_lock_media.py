@@ -115,12 +115,17 @@ class LockGuard:
             self._display = None
 
     def _raise_without_focus(self, overlay):
-        # The actual parent PIN window IS the full-screen cover: no separate
-        # top-level mask can ever obscure its buttons. Tk lift does not focus.
+        # The PIN window itself is the cover. X11 stacking raises it without
+        # re-running Tk lift(), which can cause XFCE flicker and PIN focus churn.
+        # No separate blank mask obscures the parent form.
         try:
-            if overlay is not None and overlay.winfo_exists():
-                overlay.lift()
-        except (tk.TclError, RuntimeError):
+            if overlay is None or not overlay.winfo_exists():
+                return
+            if self._x11 is not None and self._display:
+                self._x11.XRaiseWindow(self._display, overlay.winfo_id())
+                self._x11.XFlush(self._display)
+            # Without X11, the window remains topmost; avoid repeated Tk lift.
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
             pass
 
     def _raise_tick(self):
