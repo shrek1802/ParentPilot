@@ -116,8 +116,48 @@ with tempfile.TemporaryDirectory() as tmp:
         headers={'Content-Type':'image/jpeg','X-ParentPilot-Screen-Request':request_id,**token})
     assert op.open(authenticated).read() == b'OK'
     assert op.open(url+'/screen.jpg').read() == jpeg
+    # Saved screenshots need authenticated parent PIN + CSRF, never the child token alone.
+    dashboard = op.open(url+'/').read().decode()
+    assert '<meta http-equiv="refresh"' not in dashboard, 'Never flash/reload entire dashboard'
+    assert 'Save this picture' in dashboard and 'screen-modal' in dashboard
+    assert 'script src="/assets/parentpilot-screen-parent.js"' in dashboard
+    js = op.open(url+'/assets/parentpilot-screen-parent.js').read().decode()
+    assert "fetch('/api/parent-screen'" in js and 'location.reload' not in js
+    anonymous = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl._create_unverified_context()))
+    for restricted in ['/api/parent-screen', '/assets/parentpilot-screen-parent.js', '/saved-screen/20260101T000000Z-0123456789abcdef0123.jpg']:
+        try:
+            anonymous.open(url+restricted).read()
+            raise AssertionError('Anonymous access to ' + restricted)
+        except urllib.error.HTTPError as e: assert e.code == 403
+    assert json.load(op.open(url+'/api/parent-screen'))['screen_status'] == 'ready'
+    try:
+        post('/action',action='save-screen',csrf='invalid').read()
+        raise AssertionError('Picture saved without CSRF')
+    except urllib.error.HTTPError as e: assert e.code == 403
+    post('/action',action='save-screen',csrf=csrf).read()
+    gallery = ctrl.saved_pictures()
+    assert len(gallery) == 1
+    name = gallery[0]['id']
+    assert m.SAVED_ID.fullmatch(name)
+    assert (m.SAVED_PICTURES_DIR / name).stat().st_mode & 0o777 == 0o600
+    assert m.SAVED_PICTURES_DIR.stat().st_mode & 0o777 == 0o700
+    assert op.open(url+'/saved-screen/'+name).read() == jpeg
+    download = op.open(url+'/saved-screen/'+name+'?download=1')
+    assert download.info().get('Content-Disposition', '').startswith('attachment;')
+    assert download.read() == jpeg
+    # Reject filename traversal and out-of-contract saved picture paths.
+    for bad in ['/saved-screen/../../config.json','/saved-screen/test.jpg','/saved-screen/%2e%2e%2fconfig.json']:
+        try:
+            op.open(url+bad).read()
+            raise AssertionError('Unsafe saved-picture path accepted: '+bad)
+        except urllib.error.HTTPError as e: assert e.code == 404
     ctrl.screen_image_until = 0.0
     assert ctrl.get_screen() is None
+    assert op.open(url+'/saved-screen/'+name).read() == jpeg, 'Saved images should survive preview expiry'
+    try:
+        post('/action',action='save-screen',csrf=csrf).read()
+        raise AssertionError('Expired picture was saved')
+    except urllib.error.HTTPError as e: assert e.code == 400
     # Repeated requests are throttled, including by a logged-in parent.
     try:
         post('/action',action='request-screen',csrf=csrf).read()
@@ -138,5 +178,20 @@ with tempfile.TemporaryDirectory() as tmp:
         raise AssertionError('Screen preview worked when disabled')
     except urllib.error.HTTPError as e: assert e.code == 400
     assert ctrl.screen_state()['screen_status'] == 'disabled'
+    try:
+        op.open(url+'/saved-screen/'+name).read()
+        raise AssertionError('Disabled screen viewing exposed saved picture')
+    except urllib.error.HTTPError as e: assert e.code == 404
+    ctrl.cfg['screen_view_enabled'] = True
+    try:
+        post('/action',action='delete-saved-screen',csrf='invalid',saved_id=name).read()
+        raise AssertionError('Picture deleted without CSRF')
+    except urllib.error.HTTPError as e: assert e.code == 403
+    post('/action',action='delete-saved-screen',csrf=csrf,saved_id=name).read()
+    assert ctrl.saved_pictures() == []
+    try:
+        op.open(url+'/saved-screen/'+name).read()
+        raise AssertionError('Deleted picture was accessible')
+    except urllib.error.HTTPError as e: assert e.code == 404
     s.shutdown()
-    print('PASS: timer, persistence, pause, resume, unlimited, password, CSRF, parent web controls and local bonus time')
+    print('PASS: timer, persistence, pause, resume, unlimited, password, CSRF, parent web controls local bonus time, preview gallery save/download/delete, auth, CSRF, 120s expiry and no page flicker')
