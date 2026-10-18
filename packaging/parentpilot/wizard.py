@@ -28,8 +28,10 @@ class Wizard:
                 return
         self.root=tk.Tk()
         self.root.title('ParentPilot — Family Setup')
-        self.root.geometry('780x690')
-        self.root.minsize(700,610)
+        width=min(780,max(560,self.root.winfo_screenwidth()-60))
+        height=min(690,max(440,self.root.winfo_screenheight()-100))
+        self.root.geometry(f'{width}x{height}')
+        self.root.minsize(560,440)
         self.root.configure(bg=BG)
         self.root.protocol('WM_DELETE_WINDOW',self.root.destroy)
         self.step=0
@@ -48,6 +50,7 @@ class Wizard:
             'netflix':tk.BooleanVar(value=True),
             'autologin':tk.BooleanVar(value=bool(self.preflight.get('lightdm'))),
             'family_filter':tk.BooleanVar(value=True),
+            'screen_view':tk.BooleanVar(value=False),
         }
         self.v['child_name'].trace_add('write', self.suggest_user)
         self.main=tk.Frame(self.root,bg=BG)
@@ -60,7 +63,13 @@ class Wizard:
         try:
             result=subprocess.run(['/usr/bin/python3','/usr/lib/parentpilot/preflight.py','--json'],
                                   capture_output=True,text=True,timeout=5,check=True)
-            return json.loads(result.stdout)
+            state = json.loads(result.stdout)
+            # pkexec can clear desktop variables later, but the interactive
+            # wizard must verify a real XFCE/X11 parent login first.
+            if state.get('session') != 'x11' or 'XFCE' not in state.get('desktop', '').upper():
+                state['compatible'] = False
+                state.setdefault('errors', []).append('Sign into an XFCE desktop using an X11 session, then reopen ParentPilot Family Setup.')
+            return state
         except (OSError, ValueError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
             return {'compatible':False, 'os':'Unknown system', 'errors':['Could not run the compatibility check. Reinstall ParentPilot.'], 'notices':[], 'lightdm':False}
 
@@ -111,9 +120,19 @@ class Wizard:
         text=tk.Frame(head,bg=BG);text.pack(side='left',fill='x',expand=True)
         self.lbl(text,'ParentPilot',24,TEXT,True,pad=0)
         self.lbl(text,'FAMILY SETUP  •  STEP '+str(self.step+1)+' OF 4',10,TEAL,True,pad=1)
-        card=tk.Frame(self.main,bg=CARD,padx=24,pady=15)
+        # Long option descriptions must remain reachable at small laptop resolutions.
+        card=tk.Frame(self.main,bg=CARD)
         card.pack(fill='both',expand=True,pady=(18,10))
-        self.body=card
+        canvas=tk.Canvas(card,bg=CARD,highlightthickness=0,borderwidth=0)
+        bar=tk.Scrollbar(card,orient='vertical',command=canvas.yview)
+        canvas.configure(yscrollcommand=bar.set)
+        bar.pack(side='right',fill='y')
+        canvas.pack(side='left',fill='both',expand=True)
+        body=tk.Frame(canvas,bg=CARD,padx=24,pady=15)
+        window=canvas.create_window((0,0),window=body,anchor='nw')
+        body.bind('<Configure>',lambda _:canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>',lambda event:canvas.itemconfigure(window,width=event.width))
+        self.body=body
         if self.step==0:self.welcome()
         elif self.step==1:self.child()
         elif self.step==2:self.controls()
@@ -147,7 +166,7 @@ class Wizard:
         for msg in notices[:2]: self.lbl(self.body,'Note: '+msg,9,SUB,wrap=610,pad=3)
         tk.Button(self.body,text='Check this laptop again',command=self.refresh_check,bg='#334155',fg=TEXT,
                   activebackground='#475569',font=('DejaVu Sans',10),borderwidth=0,padx=12,pady=6).pack(anchor='w',pady=(12,2))
-        self.lbl(self.body,'Next: child account → parental PIN → family apps → final confirmation.',10,TEAL,pad=16)
+        self.lbl(self.body,'Next: child account → parental PIN & family apps → final confirmation.',10,TEAL,pad=16)
         self.lbl(self.body,'If you already have a working ParentPilot installation, this setup will not touch it.',10,SUB,pad=3)
 
     def child(self):
@@ -176,6 +195,8 @@ class Wizard:
             self.lbl(self.body,'Automatic login is unavailable without LightDM. Your child can still sign in normally.',10,SUB,pad=7)
         self.checked(self.body,'Apply family filtering to Chromium on this computer','family_filter')
         self.lbl(self.body,'Filtering policies apply to ALL Chromium accounts on this computer, including the parent. YouTube and Netflix age/profile settings must be set up separately.',10,SUB,pad=7)
+        self.checked(self.body,"Optional: let a parent request a picture of the child's screen",'screen_view')
+        self.lbl(self.body,'OFF by default. If enabled, a signed-in parent can ask for one screen picture without the child approving each request. The child sees a clear on-screen viewing notice each time. No hidden capture, live video or recording. Each picture expires after 30 seconds.',10,SUB,pad=7)
 
     def review(self):
         self.lbl(self.body,'Ready to install',18,TEXT,True)
@@ -184,6 +205,7 @@ class Wizard:
         self.lbl(self.body,'Netflix shortcut: '+('Yes' if self.v['netflix'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Child automatic login: '+('Yes' if self.v['autologin'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Chromium family policy: '+('Enabled' if self.v['family_filter'].get() else 'Not enabled'),11,SUB)
+        self.lbl(self.body,'Screen picture requests: '+('Parent-authorised, with a visible child notice' if self.v['screen_view'].get() else 'Off'),11,SUB)
         self.lbl(self.body,'The child’s desktop will have a curated bottom bar with Chromium, YouTube, Files and optionally Netflix. Hidden menu icons are not an OS-level app block.',11,SUB,pad=25)
         self.lbl(self.body,'Installing requires your existing ADMINISTRATOR password in the system authentication popup. The child’s six-digit PIN will never appear in this window.',10,TEAL,pad=17)
         self.result=tk.Text(self.body,height=7,bg='#0d1728',fg=TEXT,insertbackground=TEXT,font=('DejaVu Sans Mono',9),wrap='word')
@@ -249,7 +271,8 @@ class Wizard:
         self.installing=False
         self.append(output if output else 'The setup did not return a message.')
         if success:
-            messagebox.showinfo('ParentPilot ready','Setup complete. Next, sign into the new child account to test its desktop. Your parent dashboard is ready.')
+            messagebox.showinfo('ParentPilot ready',
+                'Setup complete!\n\n1. Sign into the new child account and check its timer.\n2. Connect your phone and laptop to the same Wi-Fi.\n3. Open ParentPilot on Android and tap Find nearby laptop.\n4. Sign in with your parent PIN.\n\nYour existing adult account has not been changed.')
         else:
             messagebox.showerror('Setup was not completed','The installation stopped. Read the details above. ParentPilot will not overwrite an existing installation.')
 

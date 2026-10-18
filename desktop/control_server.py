@@ -9,6 +9,7 @@ import hmac
 import html
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import ssl
@@ -17,7 +18,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 CONFIG_DIR = Path(os.environ.get('MAXFC_CONFIG_DIR', '/etc/max-family-control'))
 DATA_DIR = Path(os.environ.get('MAXFC_DATA_DIR', '/var/lib/max-family-control'))
@@ -26,6 +27,13 @@ LOCAL_USERS = {'127.0.0.1', '::1'}
 CONFIG_FILE = CONFIG_DIR / 'config.json'
 STATE_FILE = DATA_DIR / 'state.json'
 DESKTOP_TOKEN_FILE = CONFIG_DIR / 'desktop-token'
+MAX_SCREEN_BYTES = 4 * 1024 * 1024  # bounded, in-memory, one parent-requested JPEG
+SCREEN_REQUEST_INTERVAL = 45  # prevents automated rapid-fire captures
+SCREEN_PREVIEW_SECONDS = 120  # unsaved preview expires after two minutes
+MAX_SAVED_PICTURES = 20
+SAVED_PICTURES_DIR = DATA_DIR / 'saved-screens'
+SAVED_ID = re.compile(r'^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{20}[.]jpg$')
+VIEWER_JS = Path(__file__).resolve().parent / 'parentpilot_screen_parent.js'
 
 
 def new_day():
@@ -102,6 +110,144 @@ class Control:
             raise RuntimeError('Desktop auth token missing or invalid. Restore backup or re-run the v0.2 update.')
         self.last_tick = time.monotonic()
         self.active = False
+        # A parent must opt in at fresh setup, then authenticate each browser session.
+        # Each screen request is visible on the child's desktop before capture.
+        # No automatic recording, continuous streaming, or hidden capture.
+        # Only a signed-in parent may save a picture to private storage.
+        self.screen_request = ''
+        self.screen_requested_at = 0.0
+        self.screen_status = 'idle'
+        self.screen_image = None
+        self.screen_image_until = 0.0
+
+    def request_screen(self):
+        if self.cfg.get('screen_view_enabled') is not True:
+            raise ValueError('Screen viewing has not been enabled on this laptop.')
+        with self.lock:
+            now = time.monotonic()
+            if self.screen_requested_at and now - self.screen_requested_at < SCREEN_REQUEST_INTERVAL:
+                raise ValueError('Please wait at least 45 seconds between screen pictures.')
+            self.screen_request = secrets.token_urlsafe(24)
+            self.screen_requested_at = now
+            self.screen_status = 'pending'
+            self.screen_image = None
+            self.screen_image_until = 0.0
+
+    def screen_state(self, desktop=False):
+        with self.lock:
+            now = time.monotonic()
+            if self.screen_status == 'pending' and now - self.screen_requested_at > 30:
+                self.screen_status = 'expired'
+                self.screen_request = ''
+            if self.screen_image is not None and now > self.screen_image_until:
+                self.screen_image = None
+                self.screen_status = 'expired'
+                self.screen_request = ''
+            status = self.screen_status if self.cfg.get('screen_view_enabled') is True else 'disabled'
+            result = {'screen_enabled': self.cfg.get('screen_view_enabled') is True,
+                      'screen_status': status}
+            if desktop and status == 'pending':
+                result['screen_request'] = self.screen_request
+            return result
+
+    def complete_screen(self, request_id, image=None):
+        with self.lock:
+            if self.screen_state()['screen_status'] != 'pending':
+                return False
+            if not request_id or not hmac.compare_digest(request_id, self.screen_request):
+                return False
+            if image is None:
+                self.screen_status = 'failed'
+                self.screen_request = ''
+                return True
+            if not (128 <= len(image) <= MAX_SCREEN_BYTES and
+                    image[:3] == b'\xff\xd8\xff' and image[-2:] == b'\xff\xd9'):
+                return False
+            self.screen_image = image
+            self.screen_image_until = time.monotonic() + SCREEN_PREVIEW_SECONDS
+            self.screen_status = 'ready'
+            self.screen_request = ''
+            return True
+
+    def get_screen(self):
+        with self.lock:
+            return self.screen_image if self.screen_state()['screen_status'] == 'ready' else None
+
+
+    def _gallery_directory(self, create=False):
+        """Private gallery; refuse symlinked storage."""
+        directory = SAVED_PICTURES_DIR
+        if directory.is_symlink():
+            raise ValueError('Unsafe saved-picture directory.')
+        if create:
+            directory.mkdir(mode=0o700, exist_ok=True)
+            directory.chmod(0o700)
+        if not directory.exists():
+            return None
+        if not directory.is_dir():
+            raise ValueError('Invalid saved-picture directory.')
+        return directory
+
+    def saved_pictures(self):
+        with self.lock:
+            directory = self._gallery_directory()
+            if directory is None:
+                return []
+            pictures = []
+            for file in directory.iterdir():
+                if not SAVED_ID.fullmatch(file.name) or file.is_symlink() or not file.is_file():
+                    continue
+                stamp = dt.datetime.fromtimestamp(file.stat().st_mtime)
+                pictures.append({'id': file.name, 'time': stamp.strftime('%d %b %Y, %H:%M')})
+            return sorted(pictures, key=lambda item: item['id'], reverse=True)
+
+    def save_picture(self):
+        """A parent explicitly saves a current image; never archive automatically."""
+        if self.cfg.get('screen_view_enabled') is not True:
+            raise ValueError('Screen viewing is disabled.')
+        with self.lock:
+            jpeg = self.get_screen()
+            if jpeg is None:
+                raise ValueError('The picture has expired. Take another before saving.')
+            if len(self.saved_pictures()) >= MAX_SAVED_PICTURES:
+                raise ValueError('The gallery is full (20 pictures). Delete an older one first.')
+            directory = self._gallery_directory(create=True)
+            filename = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + secrets.token_hex(10) + '.jpg'
+            file = directory / filename
+            try:
+                with file.open('xb') as stream:
+                    file.chmod(0o600)
+                    stream.write(jpeg)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            except Exception:
+                file.unlink(missing_ok=True)
+                raise
+            return filename
+
+    def get_saved_picture(self, filename):
+        if not SAVED_ID.fullmatch(filename) or self.cfg.get('screen_view_enabled') is not True:
+            return None
+        with self.lock:
+            directory = self._gallery_directory()
+            if directory is None:
+                return None
+            file = directory / filename
+            if file.is_symlink() or not file.is_file() or file.stat().st_size > MAX_SCREEN_BYTES:
+                return None
+            return file.read_bytes()
+
+    def delete_saved_picture(self, filename):
+        if self.cfg.get('screen_view_enabled') is not True or not SAVED_ID.fullmatch(filename):
+            raise ValueError('Invalid saved picture.')
+        with self.lock:
+            directory = self._gallery_directory()
+            if directory is None:
+                raise ValueError('Picture not found.')
+            file = directory / filename
+            if file.is_symlink() or not file.is_file():
+                raise ValueError('Picture not found.')
+            file.unlink()
 
     def _read_state(self):
         try:
@@ -129,10 +275,11 @@ class Control:
     def granted(self):
         return not self.state['paused'] and (self.state['unlimited'] or self.remaining() > 0)
 
-    def snapshot(self):
+    def snapshot(self, desktop=False):
         with self.lock:
             self._fresh_day()
             return {
+                **self.screen_state(desktop=desktop),
                 'day': self.state['day'],
                 'allowance_seconds': self.state['allowance_seconds'],
                 'used_seconds': int(self.state['used_seconds']),
@@ -156,6 +303,8 @@ class Control:
             with self.lock:
                 self._fresh_day()
                 self.active = active
+                # Purge ephemeral images on schedule even if no parent reconnects.
+                self.screen_state()
                 if active and self.granted() and not self.state['unlimited']:
                     self.state['used_seconds'] = min(86400, self.state['used_seconds'] + elapsed)
                 if now - previous_save >= 5:
@@ -222,6 +371,19 @@ button:active{filter:brightness(1.2)}button.alt{background:#344964}button.danger
 .row{display:flex;align-items:flex-end;gap:10px}.row input{flex:1;min-width:0}.row button{flex:none}
 .msg{background:#432f3e;border:1px solid #c0788b;border-radius:9px;padding:10px;margin:10px 0}.ok{color:#79e5d3}
 .progress{height:11px;background:#344762;border-radius:30px;overflow:hidden;margin:12px 0}.bar{height:11px;background:linear-gradient(90deg,#39dbbc,#63c7f7);border-radius:30px}
+
+.screen-preview{display:block;width:100%;max-width:100%;border-radius:12px;cursor:zoom-in;margin:10px 0}
+.saved-picture{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+.saved-picture img{width:125px;max-width:38vw;border-radius:8px;cursor:zoom-in}
+.saved-picture-detail{flex:1;min-width:0}.saved-picture-detail form{display:inline-block;margin-left:12px}
+.saved-picture-detail a{color:#9be9e2}.saved-picture-detail button{min-height:36px;padding:7px 12px;font-size:.9rem}
+#screen-modal{width:min(96vw,1100px);height:92vh;max-height:92vh;padding:0;border:1px solid #60789e;border-radius:14px;background:#101d35;color:white}
+#screen-modal::backdrop{background:#020617ed}
+#screen-modal-toolbar{display:flex;align-items:center;gap:9px;justify-content:center;padding:10px;position:sticky;top:0;background:#19243a;z-index:2}
+#screen-modal-toolbar button{min-height:42px}
+#screen-modal-area{overflow:auto;width:100%;height:calc(100% - 70px);touch-action:pan-x pan-y}
+#screen-modal-image{width:100%;height:auto;max-width:none;display:block}
+[hidden]{display:none!important}
 @media(max-width:400px){.actions{grid-template-columns:1fr}.row{flex-wrap:wrap}.row button{width:100%}.stat{font-size:2.65rem}}
 '''
 
@@ -254,7 +416,63 @@ def dashboard_html(s, csrf, flash=''):
     pct = max(0, min(100, int(s['used_seconds']/total*100))) if total > 0 else 0
     def form(action, label, css='alt'):
         return f'<form action="/action" method="post"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{action}"><button class="{css}">{label}</button></form>'
-    return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title><link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style></head>
+
+    screen_card = ''
+    screen_modal = ''
+    screen_script = ''
+    if s.get('screen_enabled'):
+        condition = s.get('screen_status', 'idle')
+        ready = condition == 'ready'
+        hidden = '' if ready else ' hidden'
+        initial_img = ' src="/screen.jpg"' if ready else ''
+        gallery_entries = []
+        for entry in s.get('saved_pictures', []):
+            picture_id = esc(entry['id'])
+            picture_url = f'/saved-screen/{picture_id}'
+            when = esc(entry['time'])
+            gallery_entries.append(
+                f'<div class="saved-picture"><a href="{picture_url}" class="open-screen-viewer" '
+                f'data-screen-src="{picture_url}" aria-label="Enlarge saved picture">'
+                f'<img src="{picture_url}" alt="Saved picture from {when}" loading="lazy"></a>'
+                f'<div class="saved-picture-detail"><strong>{when}</strong><p>'
+                f'<a href="{picture_url}?download=1">Download</a>'
+                f'<form action="/action" method="post" data-delete-screen>'
+                f'<input type="hidden" name="csrf" value="{esc(csrf)}">'
+                f'<input type="hidden" name="action" value="delete-saved-screen">'
+                f'<input type="hidden" name="saved_id" value="{picture_id}">'
+                f'<button class="danger" type="submit">Delete</button></form></p></div></div>')
+        gallery_html = ''.join(gallery_entries) or '<p class="small">No saved pictures yet.</p>'
+        gallery_count = len(s.get('saved_pictures', []))
+        screen_card = (f'<section class="card" id="screen-card"><h2>View child screen</h2>'
+                       f'<p class="small">A parent can request one screen picture. '
+                       f'The child sees a notification before capture. Unsaved pictures '
+                       f'expire after two minutes. Saved pictures stay until you delete them; '
+                       f'nothing is saved automatically.</p>'
+                       f'<p>Picture status: <strong id="screen-status">{esc(condition)}</strong></p>'
+                       f'{form("request-screen", "Take one screen picture")}'
+                       f'<div id="screen-preview-container"{hidden}><p>'
+                       f'<a href="/screen.jpg" class="open-screen-viewer" '
+                       f'id="screen-preview-link" data-screen-src="/screen.jpg">'
+                       f'<img id="screen-preview" class="screen-preview"{initial_img} '
+                       f'alt="Tap to enlarge this screen picture"></a>'
+                       f'<small>Tap to enlarge and zoom.</small></p></div>'
+                       f'<form id="save-screen-form" action="/action" method="post"{hidden}>'
+                       f'<input type="hidden" name="csrf" value="{esc(csrf)}">'
+                       f'<input type="hidden" name="action" value="save-screen">'
+                       f'<button type="submit">Save this picture</button></form>'
+                       f'<hr style="border:0;border-top:1px solid var(--border);margin:24px 0">'
+                       f'<h3>Saved pictures ({gallery_count}/{MAX_SAVED_PICTURES})</h3>'
+                       f'<p class="small">Only manually saved pictures are kept privately '
+                       f'on this laptop. Download them to your phone or delete them here.</p>'
+                       f'{gallery_html}</section>')
+        screen_modal = ("""<dialog id="screen-modal" aria-label="Enlarged screen picture">
+<div id="screen-modal-toolbar"><button type="button" id="screen-close">Close</button>
+<button type="button" id="screen-zoom-out" class="alt">−</button>
+<button type="button" id="screen-zoom-in" class="alt">+</button>
+<button type="button" id="screen-zoom-fit" class="alt">Fit</button></div>
+<div id="screen-modal-area"><img id="screen-modal-image" alt="Enlarged screen picture"></div></dialog>""")
+        screen_script = '<script src="/assets/parentpilot-screen-parent.js" defer></script>'
+    return f'''<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>ParentPilot</title><link rel="icon" type="image/png" href="/assets/parentpilot-icon.png"><style>{CSS}</style>{screen_script}</head>
 <body><main><header><div class="brand"><img class="brand-icon" src="/assets/parentpilot-icon.png" alt="ParentPilot"><h1>ParentPilot</h1></div>{form('logout','Sign out')}</header>
 {f'<div class="msg">{esc(flash)}</div>' if flash else ''}
 <section class="card primary"><div class="eyebrow">{child_name}'s laptop · {esc(s['day'])}</div><div class="status">{esc(mode)}</div><div class="stat">{esc(rem)}</div><div class="progress"><div class="bar" style="width:{pct}%"></div></div><p class="small">Used today: {esc(used)} · <span id="presence">{ 'Child is using the laptop' if s['max_active'] else 'Child is not at the laptop'}</span></p></section>
@@ -263,6 +481,7 @@ def dashboard_html(s, csrf, flash=''):
 <section class="card"><h2>Add extra time</h2><div class="actions">{form('add15','+15 minutes','')}{form('add30','+30 minutes','')}{form('add60','+1 hour','')}{form('add120','+2 hours','')}</div>
 <form action="/action" method="post"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="add"><div class="row"><div><label for="bonus">Custom minutes</label><input id="bonus" name="minutes" type="number" min="1" max="720" value="20" required></div><button>Add time</button></div></form></section>
 <section class="card"><h2>Access controls</h2><p class="small">Pause immediately hides the child's desktop; Resume restores access while your child has time remaining.</p><div class="actions">{form('pause','Pause laptop','danger')}{form('resume','Resume laptop','')}{form('unlimited','Unlimited today')}{form('managed','Managed time')}</div><p></p>{form('end','End time for today','danger')}</section>
+{screen_card}{screen_modal}
 <p class="small">For phone use, bookmark this page or Add to Home Screen. Controls work over Wi-Fi or a private VPN such as Tailscale. Your child's screen is restored without closing open apps, but this first version is not tamper-proof against a technically skilled child.</p></main></body></html>'''
 
 
@@ -285,7 +504,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('X-Frame-Options', 'DENY')
-        self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         self.send_header('Referrer-Policy', 'no-referrer')
         self.send_header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
         if cookie: self.send_header('Set-Cookie', cookie)
@@ -340,16 +559,59 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 self.send_bytes('Asset unavailable', 404)
             return
+
+        if self.path == '/assets/parentpilot-screen-parent.js':
+            if not self.get_session():
+                self.send_bytes('Forbidden', 403); return
+            try:
+                self.send_bytes(VIEWER_JS.read_bytes(), content_type='application/javascript; charset=utf-8')
+            except OSError:
+                self.send_bytes('Viewer unavailable', 404)
+            return
+        if self.path == '/api/parent-screen':
+            if not self.get_session():
+                self.send_bytes('Forbidden', 403); return
+            self.send_bytes(json.dumps(self.ctl.screen_state()), content_type='application/json'); return
+        route = urlsplit(self.path).path
+        if route.startswith('/saved-screen/'):
+            if not self.get_session():
+                self.send_bytes('Forbidden', 403); return
+            filename = route[len('/saved-screen/'):]
+            picture = self.ctl.get_saved_picture(filename)
+            if picture is None:
+                self.send_bytes('Saved picture not found', 404); return
+            if urlsplit(self.path).query == 'download=1':
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(picture)))
+                self.send_header('Content-Disposition', 'attachment; filename="' + filename + '"')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('X-Frame-Options', 'DENY')
+                self.send_header('Referrer-Policy', 'no-referrer')
+                self.end_headers()
+                self.wfile.write(picture)
+            else:
+                self.send_bytes(picture, content_type='image/jpeg')
+            return
         if self.path == '/api/state':
             if not self.desktop_authorized():
                 self.send_bytes('Forbidden', 403); return
-            self.send_bytes(json.dumps(self.ctl.snapshot()), content_type='application/json'); return
+            self.send_bytes(json.dumps(self.ctl.snapshot(desktop=True)), content_type='application/json'); return
+        if self.path == '/screen.jpg':
+            auth = self.get_session()
+            if not auth:
+                self.send_bytes('Authentication required', 403); return
+            picture = self.ctl.get_screen()
+            if picture is None:
+                self.send_bytes('Picture unavailable or expired', 404); return
+            self.send_bytes(picture, content_type='image/jpeg'); return
         if self.path != '/':
             self.send_bytes('Not found', 404); return
         auth = self.get_session()
         if not auth:
             self.send_bytes(login_html(child_name=self.ctl.cfg.get('display_name', 'Child'))); return
-        self.send_bytes(dashboard_html(self.ctl.snapshot(), auth[1][1]))
+        self.send_bytes(dashboard_html({**self.ctl.snapshot(), 'saved_pictures': self.ctl.saved_pictures()}, auth[1][1]))
 
     def password_ok(self, value):
         ip = self.client_address[0]
@@ -371,13 +633,36 @@ class Handler(BaseHTTPRequestHandler):
         return ok
 
     def do_POST(self):
-        if self.path not in ('/login', '/action', '/local-grant'):
+        if self.path == '/api/screen/upload':
+            if not self.desktop_authorized():
+                self.send_bytes('Forbidden', 403); return
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+            except ValueError:
+                size = 0
+            if not 128 <= size <= MAX_SCREEN_BYTES or self.headers.get('Content-Type') != 'image/jpeg':
+                self.send_bytes('Invalid picture', 400); return
+            request_id = self.headers.get('X-ParentPilot-Screen-Request', '')
+            if len(request_id) > 128:
+                self.send_bytes('Invalid request', 400); return
+            image = self.rfile.read(size)
+            if not self.ctl.complete_screen(request_id, image):
+                self.send_bytes('Request expired, invalid, or not enabled', 409); return
+            self.send_bytes('OK', content_type='text/plain'); return
+        if self.path not in ('/login', '/action', '/local-grant', '/api/screen/fail'):
             self.send_bytes('Not found', 404); return
         if not self.headers.get('Content-Type','').lower().startswith('application/x-www-form-urlencoded'):
             self.send_bytes('Invalid content type', 415); return
         fields = self.read_form()
         if fields is None:
             self.send_bytes('Invalid form', 400); return
+        if self.path == '/api/screen/fail':
+            if not self.desktop_authorized():
+                self.send_bytes('Forbidden', 403); return
+            request_id = fields.get('request', '')
+            if len(request_id) > 128 or not self.ctl.complete_screen(request_id):
+                self.send_bytes('Request expired or invalid', 409); return
+            self.send_bytes('OK', content_type='text/plain'); return
         if self.path == '/login':
             if not self.password_ok(fields.get('password','')):
                 self.send_bytes(login_html('Incorrect PIN or temporarily rate-limited.', self.ctl.cfg.get('display_name', 'Child')), 403); return
@@ -416,10 +701,19 @@ class Handler(BaseHTTPRequestHandler):
                 minutes = int(fields.get('minutes','0') or '0')
             if action in ('set', 'add') and not (1 <= minutes <= 720):
                 raise ValueError('Enter 1–720 minutes.')
-            self.ctl.change(action, minutes)
-            self.redirect('/')
+            if action == 'request-screen':
+                self.ctl.request_screen()
+            elif action == 'save-screen':
+                self.ctl.save_picture()
+            elif action == 'delete-saved-screen':
+                self.ctl.delete_saved_picture(fields.get('saved_id', ''))
+            else:
+                self.ctl.change(action, minutes)
+            self.redirect('/#screen-card' if action in ('request-screen', 'save-screen', 'delete-saved-screen') else '/')
         except (ValueError, TypeError) as exc:
-            self.send_bytes(dashboard_html(self.ctl.snapshot(), auth[1][1], str(exc)), 400)
+            self.send_bytes(dashboard_html({**self.ctl.snapshot(), 'saved_pictures': self.ctl.saved_pictures()}, auth[1][1], str(exc)), 400)
+        except OSError:
+            self.send_bytes('Unable to access private picture storage.', 500)
 
 
 def main():

@@ -64,6 +64,8 @@ class MaxUI:
         self.last_state = None
         self.offline = False
         self.guard = LockGuard()
+        self.screen_notice = None
+        self.seen_screen_requests = set()
         self.root.after(100, self.refresh)
         self.root.mainloop()
 
@@ -124,6 +126,9 @@ class MaxUI:
         tk.Button(form, text='Add time and return to desktop', command=self.parent_grant, bg='#0284c7', fg=WHITE, activebackground='#0369a1', font=('Sans', 12, 'bold'), padx=14, pady=10, borderwidth=0).pack(fill='x')
         self.msg = tk.Label(form, text='', fg='#fca5a5', bg=PANEL, font=('Sans', 10), wraplength=540)
         self.msg.pack(pady=(8, 0))
+        self.connection_warning = tk.Label(base, text='', fg='#fcd34d', bg=BG,
+                                           font=('Sans', 10, 'bold'), wraplength=620)
+        self.connection_warning.pack(pady=(10, 0))
         bottom = tk.Frame(base, bg=BG)
         bottom.pack(pady=(23, 0))
         tk.Button(bottom, text='Switch user', command=self.switch_user, bg='#334155', fg=WHITE, font=('Sans', 11), padx=12, pady=8, borderwidth=0).pack(side='left', padx=10)
@@ -176,6 +181,79 @@ class MaxUI:
             self.overlay.destroy()
             self.overlay = None
 
+    def show_screen_notice(self, text):
+        """Persistent child-visible notice before capture and during image availability."""
+        if self.screen_notice is None or not self.screen_notice.winfo_exists():
+            self.screen_notice = tk.Toplevel(self.root)
+            self.screen_notice.overrideredirect(True)
+            self.screen_notice.attributes('-topmost', True)
+            self.screen_notice.configure(bg='#14532d', padx=14, pady=10)
+            self.screen_notice_label = tk.Label(
+                self.screen_notice, bg='#14532d', fg=WHITE,
+                font=('Sans', 10, 'bold'), wraplength=460
+            )
+            self.screen_notice_label.pack()
+        self.screen_notice_label.configure(text=text)
+        self.screen_notice.geometry('+25+25')
+        self.screen_notice.lift()
+        self.screen_notice.update_idletasks()
+
+    def hide_screen_notice(self, notice):
+        if self.screen_notice is notice and notice.winfo_exists():
+            notice.destroy()
+            self.screen_notice = None
+
+    def report_screen_failure(self, request_id):
+        # Child-side operation uses the existing LOCAL desktop token.
+        # A failed capture never silently retries or generates a fake image.
+        try:
+            body = urllib.parse.urlencode({'request': request_id}).encode('utf8')
+            req = urllib.request.Request(
+                ENDPOINT + '/api/screen/fail', data=body,
+                headers={'Content-Type': 'application/x-www-form-urlencoded',
+                         **desktop_headers()}
+            )
+            with urllib.request.urlopen(req, timeout=3, context=TLS):
+                pass
+        except (OSError, urllib.error.URLError):
+            pass
+
+    def share_one_screen(self, request_id):
+        try:
+            from screen_view import capture_jpeg
+            picture = capture_jpeg()
+            req = urllib.request.Request(
+                ENDPOINT + '/api/screen/upload', data=picture, method='POST',
+                headers={'Content-Type': 'image/jpeg',
+                         'X-ParentPilot-Screen-Request': request_id,
+                         **desktop_headers()}
+            )
+            with urllib.request.urlopen(req, timeout=8, context=TLS) as response:
+                if response.status != 200:
+                    raise RuntimeError('ParentPilot did not accept the preview.')
+            self.show_screen_notice(
+                'ParentPilot: your parent viewed a picture of this screen'
+            )
+        except Exception:
+            self.report_screen_failure(request_id)
+            self.show_screen_notice(
+                'ParentPilot: your parent requested a screen picture, but it failed'
+            )
+        finally:
+            notice = self.screen_notice
+            if notice is not None and notice.winfo_exists():
+                notice.after(30000, lambda: self.hide_screen_notice(notice))
+
+    def parent_requested_screen(self, request_id):
+        """The parent opted in during installation; show a notice, not an approval prompt."""
+        if not request_id:
+            return
+        # Display a visible notice BEFORE taking the image; do not capture covertly.
+        self.show_screen_notice(
+            'ParentPilot: your parent is viewing one picture of this screen'
+        )
+        self.root.after(400, lambda: self.share_one_screen(request_id))
+
     def refresh(self):
         try:
             state = request_state()
@@ -185,10 +263,22 @@ class MaxUI:
             self.offline = True
 
         if state is None:
-            # Fail-open when service is OFF, so a parent can recover without being locked out.
-            self.hide_overlay()
-            if self.widget is None: self.create_widget()
-            self.indicator.configure(text='Parent control offline')
+            # A single failed HTTPS poll must never remove an established lock.
+            # If the timer service is genuinely down, the adult can still use
+            # Switch user on the same overlay to repair it from their account.
+            # Prior to ANY valid state we keep the previous recovery behaviour.
+            if (self.overlay is not None or
+                    (self.last_state is not None and not self.last_state.get('allowed', True))):
+                self.hide_widget()
+                if self.overlay is None: self.create_overlay()
+                self.connection_warning.configure(
+                    text='ParentPilot connection interrupted. Screen stays paused. '
+                         'A parent can switch users to check the control service.')
+                self.guard.enforce(self.overlay)
+            else:
+                self.hide_overlay()
+                if self.widget is None: self.create_widget()
+                self.indicator.configure(text='Parent control offline — ask a parent')
         elif state['allowed']:
             self.hide_overlay()
             if self.widget is None: self.create_widget()
@@ -196,6 +286,7 @@ class MaxUI:
         else:
             self.hide_widget()
             if self.overlay is None: self.create_overlay()
+            self.connection_warning.configure(text='')
             if state['paused']:
                 self.title_label.configure(text='Laptop paused')
                 self.description.configure(text='Mum or Dad can resume your time from their phone, or approve some more time here.')
@@ -204,7 +295,13 @@ class MaxUI:
                 self.description.configure(text='Your time is up. Ask Mum or Dad if you can have some more time.')
             # The parent PIN controls are in THIS foreground window, not behind an extra mask.
             self.guard.enforce(self.overlay)
-        self.last_state = state
+        if state is not None:
+            self.last_state = state
+        if state is not None and state.get('allowed') and state.get('screen_enabled'):
+            request_id = state.get('screen_request', '')
+            if request_id and request_id not in self.seen_screen_requests:
+                self.seen_screen_requests.add(request_id)
+                self.parent_requested_screen(request_id)
         # Refresh once per second during the final minute, otherwise every 2s.
         # Server is authoritative; the overlay appears when it reports expiry.
         short_countdown = (state is not None and state.get('allowed')

@@ -11,9 +11,15 @@ which=lambda name: '/usr/bin/'+name if name in programs else None
 exists=lambda path: path == '/run/systemd/system'
 x11={'XDG_SESSION_TYPE':'x11','XDG_CURRENT_DESKTOP':'XFCE'}
 versions=(
+  {'PRETTY_NAME':'Debian GNU/Linux 11','ID':'debian'},
   {'PRETTY_NAME':'Debian GNU/Linux 12','ID':'debian'},
   {'PRETTY_NAME':'Debian GNU/Linux 13','ID':'debian'},
+  {'PRETTY_NAME':'Ubuntu 22.04','ID':'ubuntu','ID_LIKE':'debian'},
   {'PRETTY_NAME':'Ubuntu 24.04','ID':'ubuntu','ID_LIKE':'debian'},
+  {'PRETTY_NAME':'Ubuntu 26.04','ID':'ubuntu','ID_LIKE':'debian'},
+  {'PRETTY_NAME':'LMDE 7','ID':'linuxmint','ID_LIKE':'debian'},
+  {'PRETTY_NAME':'Xubuntu 24.04','ID':'ubuntu','ID_LIKE':'debian'},
+  {'PRETTY_NAME':'Raspberry Pi OS','ID':'raspbian','ID_LIKE':'debian'},
   {'PRETTY_NAME':'Linux Mint 22','ID':'linuxmint','ID_LIKE':'ubuntu debian'},
   {'PRETTY_NAME':'MX Linux','ID':'mx','ID_LIKE':'debian'},
 )
@@ -27,6 +33,7 @@ for env,problem in (({'XDG_SESSION_TYPE':'wayland','XDG_CURRENT_DESKTOP':'XFCE'}
     assert not result['compatible'] and any(problem in issue for issue in result['errors'])
 assert not pre.report(os_release={'ID':'fedora'},which=which,environ=x11,exists=exists)['compatible']
 assert not pre.report(os_release=versions[0],which=lambda n:None,environ=x11,exists=exists)['compatible']
+assert not pre.report(os_release=versions[0],which=which,environ=x11,exists=lambda _:False)['compatible']
 assert not pre.report(os_release=versions[0],which=which,environ=x11,
                       exists=lambda p: p=='/etc/max-family-control/config.json')['compatible']
 # Debian's non-root PATH sometimes omits /usr/sbin, including chpasswd and avahi.

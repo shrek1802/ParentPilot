@@ -83,7 +83,7 @@ def report(os_release=None, which=shutil.which, environ=None, exists=None) -> di
     if desktop and 'XFCE' not in desktop.upper():
         errors.append(f'This preview requires an XFCE desktop session; currently: {desktop}.')
     if not exists('/run/systemd/system'):
-        notices.append('A running systemd system manager was not detected; services must work before setup.')
+        errors.append('Systemd is not running. ParentPilot needs systemd services; choose an XFCE/X11 Linux installation with systemd.')
     if exists('/etc/max-family-control/config.json') or exists('/opt/max-family-control/control_server.py'):
         errors.append('Existing ParentPilot/Max Family Control installation detected. This fresh installer will not overwrite it.')
     if not locate('lightdm', which, exists):

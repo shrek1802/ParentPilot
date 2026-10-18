@@ -24,12 +24,21 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Install tkinter for headless desktop regression
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-tk
+
       - name: Check Python and installer
         run: |
           python3 packaging/test_installer.py
           python3 packaging/test_compatibility.py
           python3 -m compileall -q desktop packaging/parentpilot
           bash -n packaging/build-deb.sh
+      - name: Test single supervisor per child session
+        run: python3 desktop/test_supervisor_singleton.py
+
+      - name: Test lock-screen stability and recovery
+        run: python3 desktop/test_lock_stability.py
+
       - name: Test parent timer and PIN API
         run: python3 test_server.py
         working-directory: desktop
@@ -37,14 +46,18 @@ jobs:
         run: bash packaging/build-deb.sh "$GITHUB_WORKSPACE/dist"
       - name: Inspect package and protect maintainer scripts
         run: |
-          test -s dist/parentpilot_0.5.0~preview2_all.deb
-          dpkg-deb --info dist/parentpilot_0.5.0~preview2_all.deb
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview2_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview2_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+          test -s dist/parentpilot_0.5.0~preview6_all.deb
+          dpkg-deb --info dist/parentpilot_0.5.0~preview6_all.deb
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview6_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview6_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview6_all.deb | grep -F '/usr/share/icons/hicolor/128x128/apps/parentpilot.png'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview6_all.deb | grep -F '/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview6_all.deb | grep -F '/usr/lib/parentpilot/desktop/screen_view.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview6_all.deb | grep -F '/usr/lib/parentpilot/desktop/parentpilot_screen_parent.js'
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
-          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview2
+          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview6
           path: dist/*.deb
           if-no-files-found: error
           retention-days: 30

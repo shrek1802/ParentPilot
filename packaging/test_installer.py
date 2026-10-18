@@ -12,11 +12,11 @@ p=R/'parentpilot/setup_root.py'
 spec=importlib.util.spec_from_file_location('root_setup',p)
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 valid={'child_name':'Max','child_user':'maxchild','child_password':'complex#2026',
-       'parent_pin':'724951','youtube':'kids','netflix':True,'autologin':True,'family_filter':True}
+       'parent_pin':'724951','youtube':'kids','netflix':True,'autologin':True,'family_filter':True,'screen_view':False}
 assert m.validate(valid)==('Max','maxchild','complex#2026','724951')
 for changed in ({'child_user':'root'},{'child_user':'Xx'},{'child_user':'not ok'},
                 {'parent_pin':'123456'},{'child_password':'tiny'},{'netflix':'yes'},
-                {'youtube':'kids && rm -rf /'}):
+                {'youtube':'kids && rm -rf /'},{'screen_view':'yes'}):
     t={**valid,**changed}
     try:m.validate(t)
     except ValueError:pass
@@ -33,6 +33,6 @@ with tempfile.TemporaryDirectory() as d:
     assert all('value' not in elem.attrib for elem in x.findall(".//property[@type='array']")+x.findall(".//property[@type='empty']"))
     assert list((home/'.config/xfce4/panel').glob('launcher-*/**/*.desktop'))
 import py_compile
-for py in [R/'parentpilot/wizard.py',R/'parentpilot/preflight.py',R/'parentpilot/setup_root.py',R.parent/'desktop/max_desktop.py',R.parent/'desktop/parentpilot_lock_media.py']:
+for py in [R/'parentpilot/wizard.py',R/'parentpilot/preflight.py',R/'parentpilot/setup_root.py',R.parent/'desktop/max_desktop.py',R.parent/'desktop/parentpilot_lock_media.py',R.parent/'desktop/screen_view.py']:
     py_compile.compile(str(py),doraise=True)
 print('PASS: installer inputs, child panel XML and Python syntax; no accounts or services modified')
