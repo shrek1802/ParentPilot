@@ -503,7 +503,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('X-Frame-Options', 'DENY')
-        self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         self.send_header('Referrer-Policy', 'no-referrer')
         self.send_header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
         if cookie: self.send_header('Set-Cookie', cookie)
@@ -558,6 +558,41 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 self.send_bytes('Asset unavailable', 404)
             return
+
+        if self.path == '/assets/parentpilot-screen-parent.js':
+            if not self.get_session():
+                self.send_bytes('Forbidden', 403); return
+            try:
+                self.send_bytes(VIEWER_JS.read_bytes(), content_type='application/javascript; charset=utf-8')
+            except OSError:
+                self.send_bytes('Viewer unavailable', 404)
+            return
+        if self.path == '/api/parent-screen':
+            if not self.get_session():
+                self.send_bytes('Forbidden', 403); return
+            self.send_bytes(json.dumps(self.ctl.screen_state()), content_type='application/json'); return
+        route = urlsplit(self.path).path
+        if route.startswith('/saved-screen/'):
+            if not self.get_session():
+                self.send_bytes('Forbidden', 403); return
+            filename = route[len('/saved-screen/'):]
+            picture = self.ctl.get_saved_picture(filename)
+            if picture is None:
+                self.send_bytes('Saved picture not found', 404); return
+            if urlsplit(self.path).query == 'download=1':
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(picture)))
+                self.send_header('Content-Disposition', 'attachment; filename="' + filename + '"')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('X-Frame-Options', 'DENY')
+                self.send_header('Referrer-Policy', 'no-referrer')
+                self.end_headers()
+                self.wfile.write(picture)
+            else:
+                self.send_bytes(picture, content_type='image/jpeg')
+            return
         if self.path == '/api/state':
             if not self.desktop_authorized():
                 self.send_bytes('Forbidden', 403); return
@@ -575,7 +610,7 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.get_session()
         if not auth:
             self.send_bytes(login_html(child_name=self.ctl.cfg.get('display_name', 'Child'))); return
-        self.send_bytes(dashboard_html(self.ctl.snapshot(), auth[1][1]))
+        self.send_bytes(dashboard_html({**self.ctl.snapshot(), 'saved_pictures': self.ctl.saved_pictures()}, auth[1][1]))
 
     def password_ok(self, value):
         ip = self.client_address[0]
@@ -667,11 +702,17 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Enter 1–720 minutes.')
             if action == 'request-screen':
                 self.ctl.request_screen()
+            elif action == 'save-screen':
+                self.ctl.save_picture()
+            elif action == 'delete-saved-screen':
+                self.ctl.delete_saved_picture(fields.get('saved_id', ''))
             else:
                 self.ctl.change(action, minutes)
-            self.redirect('/')
+            self.redirect('/#screen-card' if action in ('request-screen', 'save-screen', 'delete-saved-screen') else '/')
         except (ValueError, TypeError) as exc:
-            self.send_bytes(dashboard_html(self.ctl.snapshot(), auth[1][1], str(exc)), 400)
+            self.send_bytes(dashboard_html({**self.ctl.snapshot(), 'saved_pictures': self.ctl.saved_pictures()}, auth[1][1], str(exc)), 400)
+        except OSError:
+            self.send_bytes('Unable to access private picture storage.', 500)
 
 
 def main():
