@@ -1,113 +1,100 @@
-# ParentPilot — Family Screen Time Control
+# ParentPilot
 
 ![ParentPilot logo](assets/parentpilot-logo.png)
 
-**Linux Mint XFCE + Android** · Branded developer preview
+**Open-source family screen-time controls for Linux XFCE, with an optional Android companion.**
 
-ParentPilot is a parental screen-time timer for a **Linux Mint XFCE** laptop, with a mobile-friendly parent dashboard and an Android companion that can **find laptops on the same Wi-Fi** automatically. The project started as a personalised setup for Max but this repository's fresh-install branch allows a parent to choose **any child display name and Linux username**.
+ParentPilot helps parents manage time on a child's Linux laptop. It creates a separate standard (non-administrator) child account, provides a child-friendly desktop and gives parents a PIN-protected dashboard for controlling screen time from a phone or browser.
 
-> **Important:** This is a developer preview, not a certified or tamper-resistant parental-control product. A technically knowledgeable user can bypass the XFCE popup. Use supervision and appropriate Linux permissions. No remote public port forwarding is necessary or recommended.
+> **Development preview — not a hardened parental-control or child-safety product.** Screen locking uses a graphical XFCE/X11 overlay, which a technically experienced user may bypass. Installation and platform compatibility need more testing before a general release.
 
-## Branding
+## Features
 
-The app uses the generated **ParentPilot family-and-clock emblem** in its Linux fullscreen parental approval page, parent web login/dashboard, Android launcher icon and Android discovery screen. `assets/` contains the original transparent wordmark and icon; `desktop/assets/` contains the runtime copies. Internal legacy file/service names are intentionally kept for upgrades.
+| Feature | What it does |
+| --- | --- |
+| Daily screen time | Set or add time, pause or resume access, end the day or allow unlimited time for a day |
+| Parent PIN | Six-digit parent PIN, separate from the child's Linux login password |
+| Child-friendly desktop | Simplified XFCE shortcuts for Chromium, YouTube and Files; optional Netflix shortcut |
+| Media-aware lock | Covers the desktop when time expires or access is paused; attempts to pause media playback and mute audio |
+| Web dashboard | Parent controls from a browser on the same trusted network |
+| Android companion | Discovers the laptop over Wi-Fi and opens the parent dashboard in the phone's browser |
+| Optional screen pictures | Parent-requested, child-notified snapshots in the current experimental build; no continuous live stream |
+| Saved picture gallery | Explicitly save selected screen pictures, view or download them, or delete them; up to 20 saved pictures |
+| Reliable lock interface | A single-instance child supervisor avoids competing lock windows; transient service polling errors no longer dismiss an established lock |
 
-## Who installs what?
+Screen-picture monitoring is **off by default** and requires an administrator to enable it during initial setup. When enabled, a parent must sign in before requesting or saving a picture. The child sees an on-screen notice before each capture. Unsaved pictures expire after two minutes; nothing is automatically recorded.
 
-| Component | Location | What it does |
-| --- | --- | --- |
-| `desktop/install.sh` | Linux Mint XFCE computer | Sets up account, background timer, local PIN and web dashboard |
-| `desktop/enable-discovery-existing.sh` | Existing *working* ParentPilot computer | Adds Avahi/mDNS Wi-Fi discovery only; does not touch timer or PIN |
-| `android-app/` | Android Studio project | Discovers nearby laptop via mDNS, then opens its HTTPS control panel in the **phone's browser** |
-| `desktop/remote-setup.sh` | Laptop (optional) | Tailscale Serve: private HTTPS address for use outside the local Wi-Fi |
+## Requirements and compatibility
 
-**What the Android app does today:** finds and remembers the laptop address, opens the existing PIN-protected web dashboard. It is a native *companion/launcher*, not a fully native dashboard. It doesn't save the PIN. Native Pause/Resume buttons can be added after safe pairing and device-authentication design.
+- **Primary target:** Linux Mint XFCE using an X11 desktop session and systemd.
+- **Additional test candidates:** Debian-family systems running XFCE/X11, including Xubuntu and Debian XFCE. Passing the compatibility checker is **not proof of full compatibility**.
+- **Not currently supported:** Wayland sessions and other desktop environments such as GNOME, Cinnamon, KDE, MATE or LXQt.
+- A separate adult administrator account is needed for initial setup. The child account must not have administrator privileges.
+- **Optional:** Android phone and local Wi-Fi for discovery; a private VPN such as Tailscale for access across different networks.
 
-### Using it at the caravan
+For tested-versus-candidate environments and dependencies, see the [Linux installer guide](packaging/README.md).
 
-- If **Mum, the laptop and phone are on the same caravan Wi-Fi or hotspot**, press **Find nearby laptop**. Discovery requires the network to permit multicast/mDNS between devices. Some guest networks and hotspots isolate clients.
-- If **Mum is somewhere else and the laptop is on another network**, local auto-scanning cannot find it. Install Tailscale on both devices, sign into the same private tailnet and set up Tailscale Serve on the laptop. Save the private `https://...ts.net` address in the Android app. Mum can then open it anywhere the laptop is online.
-- Never forward TCP 8743 publicly, enable Tailscale Funnel, or disable the firewall to force connectivity.
+## Getting started — new installation
 
-## New: branded Linux Mint .deb installer
+ParentPilot is still a test release. **Use a spare machine or disposable virtual machine while evaluating the installer.** Current Debian packages are intended for **fresh setups only**, not upgrades of an existing configured parental-control installation. The installer is designed to refuse an existing setup rather than overwrite accounts, PINs or saved time.
 
-A fresh-install **ParentPilot v0.5 Preview 6** Debian package now builds from source using [GitHub Actions](https://github.com/shrek1802/ParentPilot/actions/workflows/build-linux-deb.yml). Open the most recent successful run and download the **ParentPilot-Debian-XFCE-DEB-v0.5.0-preview6** artifact, then extract the `.deb` file.
+1. Open [Linux DEB builds on GitHub Actions](https://github.com/shrek1802/ParentPilot/actions/workflows/build-linux-deb.yml) and select an appropriate successful build. Preview 6 is available in the [draft development pull request](https://github.com/shrek1802/ParentPilot/pull/7); it is **not a stable release**.
+2. Under **Artifacts**, download the Linux DEB artifact (a ZIP containing a \`.deb\` file). GitHub may require sign-in to download CI artifacts.
+3. On an XFCE/X11 laptop, sign into the **adult administrator** account. Open the extracted \`.deb\` with the system package installer.
+4. From the applications menu, open **ParentPilot Family Setup**.
+5. Follow the compatibility check and setup wizard: choose a child name and login, child password, **separate parent PIN**, and optional content shortcuts, filtering, auto-login and screen pictures.
+6. Confirm the review screen and approve the system administrator prompt. Set up supervised YouTube and Netflix Kids profiles **inside those services** separately.
+7. Sign into the child's account and test a short time allowance, expiry, pause, parental PIN and recovery on the test device.
 
-Install with Linux Mint's package installer (or `sudo apt install ./parentpilot_0.5.0~preview6_all.deb`), then open **ParentPilot Family Setup** from the Mint application menu. The branded four-step wizard guides the parent through the child's display name, new Linux user/password, separate six-digit parent PIN, YouTube Kids or supervised mode, optional Netflix, Chromium family filtering and automatic login. The child gets a curated XFCE bottom panel and ParentPilot's tested single-window X11 lock, video-window covering and audio mute. The laptop advertises itself over Avahi for Android phone discovery.
+The application will not automatically configure streaming-service maturity restrictions or make menu hiding into operating-system-level security. Chromium filtering policies, if selected, may affect **all users of Chromium on the laptop**, including adults.
 
-**This package is for a NEW child account on a fresh Mint XFCE installation, not an in-place update. Do not try it on Max's existing working laptop.** It refuses to overwrite an existing ParentPilot/Max Family Control installation. Installation and offline tests pass, but complete provisioning and DRM playback have not yet been tested on a separate real Mint machine. ParentPilot does not select YouTube Kids maturity bands or Netflix Kids profiles for you; a parent must configure those inside the services. Menu hiding is cosmetic and the X11 overlay is not tamper-proof. Details and source: [packaging/README.md](packaging/README.md).
+## Android companion
 
-## Fresh laptop setup
+The optional Android app discovers nearby ParentPilot laptops and opens the existing HTTPS parent dashboard in your phone's browser. It is **not yet a native dashboard**, and it does not save the parent PIN.
 
-**DO NOT RUN `--install` on Max's working laptop.** It is designed for first installs and deliberately refuses to overwrite an existing `/etc/max-family-control/config.json` or `/opt/max-family-control/control_server.py`.
+- [Android installation and connection guide](ANDROID_INSTALL.md)
+- [Android debug APK builds](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml)
+- [Android source and build notes](android-app/README.md)
 
-On Linux Mint XFCE, install prerequisites via Mint's Software Manager or:
+Local discovery depends on the router allowing devices to communicate via mDNS; guest networks and some hotspots block it. For remote use, connect both devices through a **private VPN** and use a private HTTPS endpoint. Do not expose the control service directly to the public internet.
 
-```bash
-sudo apt update
-sudo apt install python3 python3-tk openssl acl avahi-daemon
-```
+## Security and privacy
 
-Then from the extracted `desktop` directory:
+- Parent PIN verification uses a salted password hash; browser actions require an authenticated session and anti-CSRF protection.
+- Screen previews are requested individually, not captured in the background. Saving a picture is an **explicit parent action**. Saved pictures remain on the laptop until deleted.
+- The child is visibly notified when a screen picture is requested. There is no webcam, microphone or continuous screen-video recording.
+- The Android app opens the browser for sign-in. The current local HTTPS service uses a self-signed certificate; verify you have connected to **your own laptop** before trusting it.
+- Local account permissions and the graphical lock are **best-effort**, not tamper-resistant protections. Child-device and authentication security need independent review before public production use.
+- Do not upload real parent PINs, configuration files, private keys, device tokens or saved screenshots to issues or pull requests.
 
-```bash
-bash install.sh --check
-sudo bash install.sh --install
-```
+## Development and testing
 
-The installer asks for:
+This repository includes the Linux desktop service, the graphical setup wizard, Debian package build scripts and the Android companion:
 
-1. Child's display name (for example, `Ellie`).
-2. Standard Linux username (for example, `ellie`) — reuse an existing non-admin user or create one.
-3. A **six-digit parent PIN**, separate from the child Linux password.
-4. Optional LightDM autologin for that child.
+| Path | Contents |
+| --- | --- |
+| \`desktop/\` | Screen-time service, child desktop, lock/media helpers and service tests |
+| \`packaging/\` | Linux first-run wizard, compatibility checks and DEB packaging |
+| \`android-app/\` | Android companion app source |
+| \`.github/workflows/\` | Automated Linux DEB and Android debug-APK builds |
 
-The services and files use their legacy internal `max-family-control` names to retain compatibility; the user-facing project is **ParentPilot**. A new child account has its own Linux password and is **not** made an administrator. An installer is a privileged script: review it and use it only on systems you control.
+From the repository root, run:
 
-### Existing working laptop: add Wi-Fi discovery only
+\`\`\`bash
+python3 desktop/test_server.py
+python3 desktop/test_lock_stability.py
+python3 desktop/test_supervisor_singleton.py
+python3 packaging/test_installer.py
+python3 packaging/test_compatibility.py
+bash packaging/build-deb.sh
+\`\`\`
 
-```bash
-sudo bash desktop/enable-discovery-existing.sh
-```
+The automated tests exercise logic and package contents, but **do not replace testing on real XFCE/X11 desktops**. In particular, the first-run experience, screenshot capture, window stacking, audio behaviour and application restrictions need cross-distribution testing.
 
-This creates an Avahi `_maxfamily._tcp` record for port 8743. It does **not** reinstall the timer, change the PIN, reset allowances or alter logins. It is the only included script intended for the current working Max laptop.
+## Project status and contributions
 
-## Android app (debug APK available)
+ParentPilot is **under active development**. Priorities before a public stable release include broader physical-device testing, clearer installation recovery and upgrade paths, accessibility checks, security review, and a properly signed Android release.
 
-The Android companion now **compiles successfully** in GitHub Actions. Download the installable test APK from the latest successful [Android build](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml) under **Artifacts → ParentPilot-Android-debug-APK**. Extract the artifact ZIP to get `app-debug.apk`. See [ANDROID_INSTALL.md](ANDROID_INSTALL.md) for installation and device setup. This is a debug build, not a Play Store/release-signed version; real-device testing on Android 14–16 and varied Wi-Fi routers is still required.
+Issues and contributions are welcome through [GitHub](https://github.com/shrek1802/ParentPilot). Please describe the Linux distribution, XFCE version, session type (X11), and relevant app version when reporting a problem, without including family or child identifiers.
 
-The app uses `NsdManager` service discovery for `_maxfamily._tcp.` on local networks. Tapping a result opens the default browser at the discovered laptop's `https://<IP>:8743/`. The current local server uses a self-signed TLS certificate, so the browser may display a warning. Check that you have selected **your own laptop** before trusting a local certificate. The app does not disable HTTPS certificate verification. For Tailscale, use the private `.ts.net` HTTPS hostname with a publicly trusted Tailscale Serve certificate.
-
-## Safety, security and privacy
-
-- Six-digit PIN is salted and hashed in a root/service-owned config file; do not upload any real config, private keys, tokens or timer state to GitHub.
-- Desktop API requires a separate local desktop token, but that token is readable by the child's own Linux account, so a capable local user could bypass the graphical restrictions.
-- Parent web operations require a PIN-authenticated session and CSRF token; five failed attempts temporarily block new attempts.
-- Device discovery is unauthenticated mDNS. It locates an **advertised** laptop; it does not prove the broadcaster is trustworthy. HTTPS and parent PIN still matter.
-- The app works over home Wi-Fi; across networks it requires a VPN such as Tailscale. **There is no public internet server in this project.**
-- A parent device joining the same Tailscale account can reach other allowed tailnet devices; review Tailscale device approvals and permissions.
-- The app should be audited before any public or Play Store release; do not treat this prototype as a commercial child-safety product.
-
-## What isn't done yet?
-
-- Android device verification (debug APK compilation succeeded; production signing and real-device tests pending)
-- A proper signed device pairing flow and native dashboard controls
-- Production-grade OS-enforced lockout
-- Installer testing on clean Mint laptops, and automatic upgrade support for the currently customised Max installation
-
-## Publishing
-
-This source can be placed in **one GitHub repository** containing `desktop/` and `android-app/`. The `LICENSE.txt` currently uses MIT. Before releasing publicly, review licensing/attribution, perform security testing and consider publishing prebuilt signed APKs via GitHub Releases (not by committing a signing key).
-
-
-## ParentPilot 0.5 Preview 6 — beginner-friendly Debian-family installer
-
-**Single-instance fix:** The child's desktop supervisor now uses a non-blocking operating-system lock per child account. If XFCE launches multiple copies or old supervisors linger, duplicates exit without opening another PIN/lock window. Only one child UI is supervised at a time, reducing competing overlays and repeated API polling. The fix does not replace the parent timer/PIN service. A dedicated, hash-checked patch for Max's already-installed supervisor is separate from this fresh-install DEB.
-
-
-**Lock-screen stability:** Once the child is paused or time has expired, a single temporary loss of contact with the timer service no longer destroys the lock screen. A visible connection warning appears, and the adult can still use **Switch user** to repair the service. Repeated Tk lift calls were replaced with focus-neutral X11 window raising to reduce overlay flicker. A real service failure still needs investigation using its systemd journal; a graphical fix cannot restart a failed service.
-
-
-The latest fresh-install `.deb` has a branded, scrollable ParentPilot setup wizard with a **read-only compatibility check**, automatically suggested child username, separate parent PIN, curated XFCE child desktop, YouTube/Netflix shortcuts, optional Chromium filtering, and Android Wi-Fi discovery. It accepts **Debian/Ubuntu-family XFCE on X11**, not all Debian desktops. It refuses existing ParentPilot setups. **Never install this testing preview on Max's already working laptop.**
-
-See [the installer guide and supported-system matrix](packaging/README.md). Preview 6 adds **optional parent-requested screen pictures**, off by default, with no background recording. An administrator enables screen viewing in the fresh-install wizard. A parent signed in with their PIN can take one picture (visible notice on the child's screen), tap to enlarge/zoom, and **explicitly save** selected pictures in a private gallery (20-picture limit) for later viewing, phone download or deletion. Unsaved pictures expire after **two minutes**, new requests are limited to once every 45 seconds, and the parent page polls screenshot status **without refreshing or flickering the full dashboard**. This is **not live screen streaming**. Full VM/real-device testing is still required. The existing Max installation must stay on its working version.
+Source licensing is described in [LICENSE.txt](LICENSE.txt).
