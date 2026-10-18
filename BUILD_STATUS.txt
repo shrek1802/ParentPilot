@@ -1,11 +1,23 @@
-ParentPilot 0.5 Preview 2 — 2026-10-17
+ParentPilot 0.5 Preview 6 — development build status
 
-STATUS: FRESH INSTALL PREVIEW — NOT A VERIFIED UNIVERSAL DEBIAN RELEASE
+STATUS: FRESH-INSTALL DEVELOPER PREVIEW — NOT A VERIFIED GENERAL-PURPOSE RELEASE
 
-Included: branded wizard, read-only operating-system and desktop checks, suggested child username, separate parent PIN, XFCE child-only shortcuts/panel, optional LightDM autologin, browser policy warning, Avahi automatic Wi-Fi discovery, Android dashboard connection, and existing single-window video/audio lock.
+Included: branded first-run wizard, Linux desktop compatibility checks,
+separate non-administrator child account and parent PIN, XFCE child desktop,
+screen-time controls, media-aware fullscreen lock, and Android companion
+connection over a trusted local network.
 
-Offline tests: successful installer validation, simulated Debian/Ubuntu/Mint/MX checks, timer/PIN/API tests, Python compilation and GitHub Actions Debian build.
+Preview 6 additions: child-notified individual screen pictures, optional private saved-picture gallery, tap-to-zoom viewer, no full-page parent dashboard refresh, more resilient lock-screen handling, and single-instance child desktop supervisor.
 
-NOT YET VERIFIED: full account provisioning on a fresh Debian/Ubuntu/Mint machine, Wayland/GNOME/KDE/Cinnamon support, full repair/uninstall, optional child-visible parental screen preview, real Netflix DRM.
+Automated checks: application Python tests, simulated Linux compatibility cases,
+packaging validation and GitHub Actions build.
 
-DO NOT INSTALL THIS PREVIEW OVER MAX'S EXISTING PARENTPILOT.
+Requires more testing: fresh-account provisioning across Debian-family XFCE/X11
+laptops; installation recovery; screenshot/display behaviour where applicable;
+accessibility and security review; signed Android production deployment.
+
+This Debian package is for NEW installations only. Do not install it as an
+upgrade over an already configured ParentPilot installation. Test using a spare
+computer or disposable virtual machine.
+
+More information: README.md and packaging/README.md.
