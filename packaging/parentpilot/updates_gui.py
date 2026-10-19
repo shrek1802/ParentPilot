@@ -109,8 +109,7 @@ class UpdatesGUI:
 
         ttk.Label(
             frame,
-            text='Adult approval required · Backups made before installation · '
-                 'Child must be signed out',
+            text='Adult approval required · Backup first · Child sign-out if needed',
             style='Muted.TLabel', wraplength=max(230, width - 55),
             justify='left',
         ).pack(side='bottom', anchor='w', pady=(8, 2))
@@ -226,18 +225,27 @@ class UpdatesGUI:
         if not update or self.busy:
             return
         if not messagebox.askyesno(
-                'Confirm ParentPilot update',
+                'Confirm update and child sign-out',
                 'Install ParentPilot ' + update['version'] + '?\n\n'
-                'Sign the child out before continuing. ParentPilot will ask '
-                'for an administrator password, back up settings and program '
-                'files, then install the verified release.\n\n'
-                'No automatic account/PIN reset will be performed.\n\n'
-                'Continue?', parent=self.root):
+                'If the child is still signed in (even in the background), '
+                'ParentPilot will automatically sign out ONLY the child account '
+                'before updating.\n\n'
+                'WARNING: Please save the child\'s open work first. '
+                'Unsaved work in their apps may be LOST.\n\n'
+                'The adult account remains signed in. ParentPilot backs up '
+                'the configuration, timer state and saved pictures before the '
+                'child is signed out.\n\n'
+                'Approve this update and any necessary child sign-out?',
+                parent=self.root):
             return
-        self.status.set('Requesting administrator approval and installing…')
-        self.set_notes('A PolicyKit password dialog should open. Do not shut down '
-                       'the laptop during the update.')
-        args = ['pkexec', '/usr/bin/python3', BACKEND, self.channel.get(), update['tag']]
+        self.status.set('Verifying the update and preparing a private backup…')
+        self.set_notes(
+            'A PolicyKit password dialog should open. The package is verified '
+            'and backed up before the child is signed out, if needed. '
+            'Do not shut down the laptop during installation.'
+        )
+        args = ['pkexec', '/usr/bin/python3', BACKEND, self.channel.get(),
+                update['tag'], '--sign-out-child']
         self.start_worker(
             lambda: subprocess.run(args, capture_output=True, text=True, timeout=480),
             self.installed
