@@ -1,0 +1,104 @@
+name: Publish ParentPilot Linux Preview 16
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths:
+      - '.github/workflows/publish-parentpilot-preview16.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Confirm the exact CI-tested build is successful
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39325912314
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 2f4c3cdec776216a66f71b15885b145595b17192
+
+      - name: Download and verify installable ParentPilot Preview 16
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39325912314 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview16 \
+            --dir incoming
+          deb="incoming/parentpilot_0.5.0~preview16_all.deb"
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = "0.5.0~preview16"
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for name in \
+            usr/lib/parentpilot/setup-root \
+            usr/lib/parentpilot/child_panel.py \
+            usr/lib/parentpilot/games_catalog.py \
+            usr/lib/parentpilot/games_gui.py \
+            usr/lib/parentpilot/games_install.py \
+            usr/bin/parentpilot-games \
+            usr/share/applications/parentpilot-games.desktop \
+            usr/lib/parentpilot/update_install.py \
+            usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$name" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview16_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+
+      - name: Create release notes for fresh and existing families
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 16 — Games & Learning startup fix
+
+          **This fixes a regression in Preview 15 on existing Linux Mint laptops.**
+
+          ### Fixed
+          - Opening **ParentPilot Games & Learning** from the adult Applications menu no longer requires the ordinary user to read root-protected files in /etc/max-family-control.
+          - The game's checkbox window now opens in the normal adult desktop session without sudo or PolicyKit. Only *installing* selected games requires a separate authenticated PolicyKit password prompt.
+          - If a child opens the game management shortcut, ParentPilot explains that the parent should sign into the adult account; it does not silently close.
+          - Startup exceptions now show a readable error and can be diagnosed with \`parentpilot-games\` in the adult Terminal.
+
+          ### New installation or update
+          - Already using Preview 15? Sign into the **adult administrator account**, open **ParentPilot Updates**, select **Preview**, then install Preview 16.
+          - **Do not** run the first-time Family Setup wizard again. Existing accounts, passwords, six-digit PIN, timer, saved screenshots and selected games are preserved.
+          - After updating, open **Games & Learning** from the adult Applications menu. Select from eight optional free games: GCompris, Tux Maths, Tux Typing, Tux Paint, Pingus, SuperTux, Frozen Bubble, Sudoku.
+          - Confirm the adult password only after selecting **Install selected games**. APT downloads from the OS's configured repositories; internet access is needed.
+
+          ### Checks
+          The original issue was a startup permission check of /etc/max-family-control, which is protected as root:maxfamily. New regression tests ensure the unprivileged adult window opens while the privileged backend continues to check the managed installation. Full GitHub CI for the exact DEB was successful. Real Dell/XFCE interface still needs a live test.
+
+          **Unchanged:** normal XFCE applications menu, VLC, Chromium, child panel and timer controls, Android remote application.
+          EOF
+
+      - name: Publish verified Preview 16 without overwriting old releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview16 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Preview 16 already published. Refusing to overwrite."
+            exit 1
+          fi
+          gh release create v0.5.0-preview16 \
+            publish/parentpilot_0.5.0.preview16_all.deb publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 2f4c3cdec776216a66f71b15885b145595b17192 \
+            --title "ParentPilot Linux Preview 16 - Games & Learning launch fix" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --prerelease
+          gh release view v0.5.0-preview16 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
