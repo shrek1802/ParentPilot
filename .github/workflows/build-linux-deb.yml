@@ -2,7 +2,7 @@ name: Build ParentPilot Debian-family DEB
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/preview3-setup-screen-consent]
     paths:
       - 'desktop/**'
       - 'packaging/**'
