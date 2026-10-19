@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview8
+VERSION=0.5.0~preview9
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -57,6 +57,7 @@ install -m 0644 "$ROOT/packaging/parentpilot/youtube.svg" "$STAGING/usr/lib/pare
 install -m 0644 "$ROOT/packaging/parentpilot/netflix.svg" "$STAGING/usr/lib/parentpilot/icons/netflix.svg"
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
 install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
+install -m 0644 "$ROOT/packaging/parentpilot/child_panel.py" "$STAGING/usr/lib/parentpilot/child_panel.py"
 # Parent-only updater: read-only version checks, privileged verified DEB upgrades.
 install -m 0644 "$ROOT/packaging/parentpilot/update_release.py" "$STAGING/usr/lib/parentpilot/update_release.py"
 install -m 0644 "$ROOT/packaging/parentpilot/updates_gui.py" "$STAGING/usr/lib/parentpilot/updates_gui.py"
