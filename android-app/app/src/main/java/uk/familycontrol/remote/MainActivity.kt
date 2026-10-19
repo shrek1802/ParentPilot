@@ -832,7 +832,7 @@ class MainActivity : Activity() {
                     val api = client ?: return@setOnClickListener
                     backgroundImage({ api.jpeg(pic.id) }) { result ->
                         result.onSuccess { openPictureViewer(it, pic.time) }
-                            .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
+                            .onFailure { Toast.makeText(this@MainActivity, safeError(it), Toast.LENGTH_LONG).show() }
                     }
                 }
             }
@@ -864,14 +864,14 @@ class MainActivity : Activity() {
                 val api = client ?: return@quickButton
                 backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { openPictureViewer(it, pic.time) }
-                        .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
+                        .onFailure { Toast.makeText(this@MainActivity, safeError(it), Toast.LENGTH_LONG).show() }
                 }
             }
             quickButton(actions, "Save to phone", "blue") {
                 val api = client ?: return@quickButton
                 backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { saveWithSystemPicker(it, pic.id) }
-                        .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
+                        .onFailure { Toast.makeText(this@MainActivity, safeError(it), Toast.LENGTH_LONG).show() }
                 }
             }
             val delete = text("Delete picture", 12f, red).apply {
@@ -895,7 +895,7 @@ class MainActivity : Activity() {
         val api = client ?: return
         background({ api.state() }) { result ->
             result.onSuccess { if (client === api) applyState(it) }
-                .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
+                .onFailure { Toast.makeText(this@MainActivity, safeError(it), Toast.LENGTH_LONG).show() }
         }
     }
 
