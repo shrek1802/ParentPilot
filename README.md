@@ -17,7 +17,7 @@ ParentPilot helps parents manage time on a child's Linux laptop. It creates a se
 | Child-friendly desktop | Simplified XFCE shortcuts for Chromium, YouTube and Files; optional Netflix shortcut |
 | Media-aware lock | Covers the desktop when time expires or access is paused; attempts to pause media playback and mute audio |
 | Web dashboard | Parent controls from a browser on the same trusted network |
-| Android companion | Discovers the laptop over Wi-Fi and opens the parent dashboard in the phone's browser |
+| Native Android app (preview) | Wi-Fi/Tailscale connection, parent PIN sign-in, time controls, screenshot viewer and gallery without opening a browser |
 | Optional screen pictures | Parent-requested, child-notified snapshots in the current experimental build; no continuous live stream |
 | Saved picture gallery | Explicitly save selected screen pictures, view or download them, or delete them; up to 20 saved pictures |
 | Reliable lock interface | A single-instance child supervisor avoids competing lock windows; transient service polling errors no longer dismiss an established lock |
@@ -50,7 +50,7 @@ The application will not automatically configure streaming-service maturity rest
 
 ## Android companion
 
-The optional Android app discovers nearby ParentPilot laptops and opens the existing HTTPS parent dashboard in your phone's browser. It is **not yet a native dashboard**, and it does not save the parent PIN.
+The Android app has a **native parent dashboard** with set/add time, pause/resume, unlimited/managed mode, individual screenshots and the saved gallery. It runs these controls directly inside the app instead of opening a browser. It retains the original Android application ID (uk.familycontrol.remote) and has a higher version number. The parent PIN is not stored. Local HTTPS certificate fingerprints must be checked once, and a new APK cannot replace an older APK signed with a different certificate.
 
 - [Android installation and connection guide](ANDROID_INSTALL.md)
 - [Android debug APK builds](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml)
@@ -63,7 +63,7 @@ Local discovery depends on the router allowing devices to communicate via mDNS; 
 - Parent PIN verification uses a salted password hash; browser actions require an authenticated session and anti-CSRF protection.
 - Screen previews are requested individually, not captured in the background. Saving a picture is an **explicit parent action**. Saved pictures remain on the laptop until deleted.
 - The child is visibly notified when a screen picture is requested. There is no webcam, microphone or continuous screen-video recording.
-- The Android app opens the browser for sign-in. The current local HTTPS service uses a self-signed certificate; verify you have connected to **your own laptop** before trusting it.
+- The native Android app verifies ordinary HTTPS certificates and requires **explicit SHA-256 certificate fingerprint verification** for self-signed local laptop connections; the parent PIN is not retained on the phone.
 - Local account permissions and the graphical lock are **best-effort**, not tamper-resistant protections. Child-device and authentication security need independent review before public production use.
 - Do not upload real parent PINs, configuration files, private keys, device tokens or saved screenshots to issues or pull requests.
 
@@ -75,7 +75,7 @@ This repository includes the Linux desktop service, the graphical setup wizard, 
 | --- | --- |
 | `desktop/` | Screen-time service, child desktop, lock/media helpers and service tests |
 | `packaging/` | Linux first-run wizard, compatibility checks and DEB packaging |
-| `android-app/` | Android companion app source |
+| `android-app/` | Native Android parent dashboard and pinned HTTPS client |
 | `.github/workflows/` | Automated Linux DEB and Android debug-APK builds |
 
 From the repository root, run:
