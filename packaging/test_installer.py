@@ -64,6 +64,43 @@ with tempfile.TemporaryDirectory() as d:
         image = ET.parse(R/'parentpilot'/name).getroot()
         assert image.tag.endswith('svg'), name
 
+    # The child menu must list only explicitly allowed family apps, not
+    # the default XFCE System, Settings, Office, or Run Program categories.
+    menu = home / '.config/menus/parentpilot.menu'
+    xml = ET.parse(menu).getroot()
+    included = [n.text for n in xml.findall('./Include/Filename')]
+    assert included == [
+        'parentpilot-browser.desktop', 'parentpilot-files.desktop',
+        'parentpilot-youtube.desktop', 'parentpilot-netflix.desktop',
+        'parentpilot-logout.desktop',
+    ], included
+    assert xml.findtext('AppDir') == str(home/'.local/share/applications')
+    assert xml.find('./Include/All') is None
+    assert xml.find('./DefaultMergeDirs') is None
+    for filename in included:
+        entry = home/'.local/share/applications'/filename
+        raw = entry.read_text()
+        assert raw.startswith('[Desktop Entry]\n'), (filename, repr(raw))
+        assert '\nExec=' in raw and '\nIcon=' in raw, (filename, repr(raw))
+        assert r'\n' not in raw
+    assert (home/'.local/share/applications/parentpilot-files.desktop').read_text().find('Exec=thunar') != -1
+    assert 'xfce4-session-logout' in (home/'.local/share/applications/parentpilot-logout.desktop').read_text()
+    app_menu = x.find(".//property[@name='plugin-1']")
+    assert app_menu.find("./property[@name='custom-menu']").get('value') == 'true'
+    assert app_menu.find("./property[@name='custom-menu-file']").get('value') == str(menu)
+    assert x.find(".//property[@name='panel-1']/property[@name='icon-size']").get('value') == '28'
+    assert x.find(".//property[@name='plugin-21']/property[@name='icon-size']").get('value') == '18'
+    assert x.find(".//property[@name='plugin-22']/property[@name='digital-format']").get('value') == '%H:%M'
+
+    # Optional Netflix must remain optional; YouTube Kids or supervised
+    # preference is retained by the .desktop file already in the child home.
+    with tempfile.TemporaryDirectory() as second:
+        h2 = pathlib.Path(second)
+        cp.write_child_menu(h2, youtube=True, netflix=False)
+        names = [v.text for v in ET.parse(h2/'.config/menus/parentpilot.menu').getroot().findall('./Include/Filename')]
+        assert 'parentpilot-netflix.desktop' not in names
+        assert 'parentpilot-youtube.desktop' in names
+
     # App launchers are centred, and systray/clock remain on the right.
     positions=[p.attrib.get('name') for p in x.findall(".//property[@name='plugin-ids']/value")]
     plugins=x.find(".//property[@name='plugin-ids']")
@@ -110,6 +147,9 @@ with tempfile.TemporaryDirectory() as d:
     commands=cp.xfconf_commands_for_panel(home)
     assert len(commands) >= 8
     assert any('/panels/panel-1/plugin-ids' in c for c in commands)
+    assert any('/plugins/plugin-1/custom-menu-file' in c for c in commands)
+    assert any('/plugins/plugin-21/icon-size' in c and c[-1] == '18' for c in commands)
+    assert any('/plugins/plugin-22/digital-format' in c and c[-1] == '%H:%M' for c in commands)
     assert all(c[0] == 'xfconf-query' and c[2] == 'xfce4-panel' for c in commands)
     with patch.object(cp.os, 'geteuid', return_value=1000), \
          patch.object(cp.os, 'getuid', return_value=1000), \
