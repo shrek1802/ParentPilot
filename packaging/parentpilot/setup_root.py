@@ -111,15 +111,8 @@ def child_desktop(user, name, youtube, netflix):
         make_desktop(appl/'parentpilot-netflix.desktop','Netflix', f'{browser} --no-first-run --app=https://www.netflix.com/',str(Path('/usr/lib/parentpilot/icons/netflix.svg')),'Use a Kids profile and lock adult profiles. DRM requires Widevine.')
     autostart=home/'.config/autostart'; autostart.mkdir(parents=True,exist_ok=True)
     (autostart/'parentpilot.desktop').write_text('[Desktop Entry]\nType=Application\nName=ParentPilot Timer\nExec=/usr/bin/python3 -B /opt/max-family-control/max_desktop_supervisor.py\nTerminal=false\nOnlyShowIn=XFCE;\nX-GNOME-Autostart-enabled=true\n',encoding='utf8')
-    # App hiding is per-child and cosmetic: scripts/keyboard shortcuts still exist.
-    hidden=('xfce4-terminal.desktop','org.xfce.Terminal.desktop','mintinstall.desktop',
-            'synaptic.desktop','software-properties-gtk.desktop','org.gnome.Software.desktop',
-            'timeshift-gtk.desktop','org.xfce.terminal.desktop','gdebi.desktop',
-            'firefox.desktop','google-chrome.desktop','brave-browser.desktop',
-            'gnome-terminal.desktop','org.xfce.appfinder.desktop')
-    for item in hidden:
-        dest=appl/item
-        if not dest.exists(): dest.write_text('[Desktop Entry]\nType=Application\nName=Hidden from child menu\nHidden=true\n',encoding='utf8')
+    # Only other browser shortcuts are hidden by write_child_panel.
+    # Keep normal Linux apps, menus, Office, VLC, terminal and settings intact.
     # Child-specific preferred browser, without changing parent account defaults.
     mime=home/'.config/mimeapps.list';mime.parent.mkdir(parents=True,exist_ok=True)
     mime.write_text('[Default Applications]\ntext/html=parentpilot-browser.desktop\nx-scheme-handler/http=parentpilot-browser.desktop\nx-scheme-handler/https=parentpilot-browser.desktop\n',encoding='utf8')
