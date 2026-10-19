@@ -1,15 +1,15 @@
 # Install ParentPilot's native Android app
 
-ParentPilot `0.4.0-native-preview` is a **native in-app parental dashboard**. It no longer launches a website for timer controls or viewing pictures. It remains a **developer preview** requiring real-phone testing.
+ParentPilot `0.4.2-updates-preview` is a **native in-app parental dashboard**. It no longer launches a website for timer controls or viewing pictures. It remains a **developer preview** requiring real-phone testing.
 
 ## Download the current native test APK
 
 1. Open [ParentPilot Android build results](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml).
 2. Open the latest successful run for the development branch.
-3. Under **Artifacts**, download **ParentPilot-Android-Native-Debug-APK** and extract `app-debug.apk`. GitHub may require sign-in.
+3. Under **Artifacts**, download **ParentPilot-Android-Updater-Debug-APK** and extract `app-debug.apk`. GitHub may require sign-in.
 4. Install the APK on an Android 8 or newer phone (allow installation from the chosen source when Android prompts you).
 
-The package ID remains `uk.familycontrol.remote`, version code 5. **The installer may reject an in-place upgrade if the previous GitHub debug build was signed with a different key**. Same ID is necessary but not sufficient. A stable signing-key workflow is prepared for future updates; see [Android developer notes](android-app/README.md). Only uninstall the old **phone app** if needed; this does not change the laptop's ParentPilot setup.
+The package ID remains `uk.familycontrol.remote`, version code 7. **The installer may reject an in-place upgrade if the previous GitHub debug build was signed with a different key**. Same ID is necessary but not sufficient. A stable signing-key workflow is prepared for future updates; see [Android developer notes](android-app/README.md). Only uninstall the old **phone app** if needed; this does not change the laptop's ParentPilot setup.
 
 ## Connect to the laptop
 
@@ -36,6 +36,12 @@ For later connections, the app remembers the laptop address and verified certifi
 - Download an image to the phone through Android's document picker
 
 The laptop's optional screen-viewing feature must be enabled by an administrator. It uses individual parent-requested screenshots, **not a continuous screen recording**; the child receives a visible notification.
+
+## New software updates
+
+The native app now has **More → Software updates**. It automatically checks official GitHub Releases after sign-in, shows a notice when a new version qualifies, and offers a reviewed in-app download followed by Android's normal installation approval. Stable is selected by default; preview releases require opting in. An APK will only update an existing phone app if its **signing key matches**.
+
+The updater requires a correctly published GitHub Release; a successful Actions debug build is not an auto-update release. Permanent signing secrets have to be configured first. See [ParentPilot update guide](docs/UPDATES.md).
 
 ## Troubleshooting
 
