@@ -36,8 +36,8 @@ with tempfile.TemporaryDirectory() as d:
     for name in ('xfce4-terminal.desktop', 'mintinstall.desktop', 'org.xfce.appfinder.desktop'):
         (apps/name).write_text(cp.OLD_HIDDEN_ENTRY)
     (apps/'my-art-project.desktop').write_text(
-        '[Desktop Entry]\\nType=Application\\nName=My Drawing\\n'
-        'Exec=true\\nCategories=Graphics;\\n')
+        '[Desktop Entry]\nType=Application\nName=My Drawing\n'
+        'Exec=true\nCategories=Graphics;\n')
     (apps/'firefox.desktop').write_text(cp.OLD_HIDDEN_ENTRY)
     m.write_child_panel(home,1000,netflix=True)
     x=ET.parse(home/'.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
