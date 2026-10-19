@@ -92,6 +92,22 @@ with tempfile.TemporaryDirectory() as tmp:
         raise AssertionError('Anonymous local-grant via proxy')
     except urllib.error.HTTPError as e: assert e.code==403
     assert 'pattern="[0-9]{6}"' in m.login_html()
+    # Native Android status API exposes timers, CSRF and gallery only to a
+    # parent browser session. The child desktop token is insufficient.
+    parent_json = json.load(op.open(url+'/api/parent/v1/status'))
+    assert parent_json['child'] == 'max'
+    assert parent_json['csrf'] == csrf
+    assert parent_json['remaining_seconds'] == ctrl.snapshot()['remaining_seconds']
+    assert parent_json['screen_enabled'] is True
+    try:
+        urllib.request.urlopen(
+            urllib.request.Request(url+'/api/parent/v1/status', headers=token),
+            context=ssl._create_unverified_context()
+        ).read()
+        raise AssertionError('Desktop token accessed the private parent state API')
+    except urllib.error.HTTPError as e:
+        assert e.code == 403
+
     # A parent opts in at install and authenticates every dashboard session.
     # The child-side process receives a short-lived request and shows a notice.
     # The desktop token must be presented to upload a captured image.
