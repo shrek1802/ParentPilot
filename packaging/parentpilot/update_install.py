@@ -8,6 +8,7 @@ package digest and metadata, backs up files, and verifies the service after upda
 """
 import json
 import os
+import signal
 from pathlib import Path
 import pwd
 import re
@@ -120,6 +121,124 @@ def child_session_block_reason():
 def child_signed_in():
     """Compatibility wrapper for existing clients; fail closed on uncertainty."""
     return child_session_block_reason() is not None
+
+
+def verified_child_account():
+    """Use only the configured non-administrator child, never a supplied username."""
+    details = json.loads((CFG / 'config.json').read_text())
+    child = details['child']
+    if not isinstance(child, str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,30}', child):
+        raise RuntimeError('Invalid configured child account; update stopped.')
+    account = pwd.getpwnam(child)
+    if account.pw_uid < 1000 or account.pw_uid == os.getuid():
+        raise RuntimeError('Configured child must be a separate non-system Linux user.')
+    return child, account
+
+
+def verify_adult_approved_signout(child_uid):
+    """A sign-out request MUST originate from an authenticated adult GUI via pkexec."""
+    owner = os.environ.get('PKEXEC_UID', '')
+    if not owner.isascii() or not owner.isdecimal():
+        raise RuntimeError('Automatic sign-out requires an adult-approved PolicyKit request.')
+    caller_uid = int(owner)
+    if caller_uid in (0, child_uid):
+        raise RuntimeError('Refusing to sign out the administrator or requesting account.')
+    caller = pwd.getpwuid(caller_uid)
+    group_ids = os.getgrouplist(caller.pw_name, caller.pw_gid)
+    adult_groups = {'sudo', 'admin', 'wheel'}
+    if not any(grp.getgrgid(g).gr_name in adult_groups for g in group_ids):
+        raise RuntimeError('Automatic child sign-out requires a Linux administrator.')
+    return caller.pw_name
+
+
+def signed_in_child_session(reason):
+    """Never terminate accounts just because a system query failed or was ambiguous."""
+    return (
+        reason is not None and (
+            reason.startswith('Child Linux session ') or
+            reason.startswith('Child session ')
+        )
+    )
+
+
+def wait_for_child_logout(seconds=5):
+    deadline = time.monotonic() + seconds
+    while True:
+        reason = child_session_block_reason()
+        if reason is None:
+            return None
+        if not signed_in_child_session(reason):
+            raise RuntimeError('Unable to verify child logout safely: ' + reason)
+        if time.monotonic() >= deadline:
+            return reason
+        time.sleep(0.5)
+
+
+def sign_out_child_with_approval():
+    """Explicitly approved by the adult; only after download and private backup.
+
+    XFCE fast user switching leaves the child's session running. logind should
+    terminate it; on some Mint machines its orphaned Python/GeoClue processes
+    can keep the session in State=closing, so use child-UID scoped SIGTERM only
+    after a grace period. Never SIGKILL or terminate unrelated user accounts.
+    """
+    if not configured_for_updates():
+        raise RuntimeError('The original managed installation marker is missing.')
+    child, account = verified_child_account()
+    parent = verify_adult_approved_signout(account.pw_uid)
+    before = child_session_block_reason()
+    if before is None:
+        return False
+    if not signed_in_child_session(before):
+        raise RuntimeError('Cannot safely identify the child session: ' + before)
+    print('Adult ' + parent + ' approved child account sign-out before upgrading.', flush=True)
+    print('Warning: unsaved work in child applications may be lost.', flush=True)
+    # Explicit string argument, not a shell command and never the invoking adult.
+    result = subprocess.run(
+        ['loginctl', 'terminate-user', child],
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    if result.returncode != 0:
+        # Recheck before interpreting a race during a logout as failure.
+        if child_session_block_reason() is not None:
+            raise RuntimeError('Could not sign out the child through logind: ' +
+                               (result.stderr.strip()[:240] or 'unknown failure'))
+    blocked = wait_for_child_logout()
+    if blocked:
+        # Any remaining processes belong to the configured child account only.
+        # This is a deliberate second SIGTERM, never a blanket pkill as root.
+        r = subprocess.run(
+            ['ps', '-u', child, '-o', 'pid='],
+            capture_output=True, text=True, timeout=6, check=False,
+        )
+        if r.returncode not in (0, 1):
+            raise RuntimeError('Cannot inspect remaining child processes.')
+        for line in r.stdout.splitlines():
+            raw = line.strip()
+            if not raw.isdecimal():
+                raise RuntimeError('Unexpected child process identifier.')
+            pid = int(raw)
+            if pid <= 1:
+                raise RuntimeError('Invalid child process identifier.')
+            # Verify the process is still owned by the child (PID reuse guard).
+            try:
+                status = Path('/proc') / str(pid) / 'status'
+                fields = status.read_text().splitlines()
+                uids = next(x.split()[1:] for x in fields if x.startswith('Uid:'))
+                if int(uids[0]) != account.pw_uid:
+                    continue
+                os.kill(pid, signal.SIGTERM)
+            except (FileNotFoundError, ProcessLookupError):
+                pass
+            except (OSError, ValueError, StopIteration) as exc:
+                raise RuntimeError('Failed to stop an orphaned child process.') from exc
+        blocked = wait_for_child_logout(seconds=8)
+    if blocked:
+        raise RuntimeError('Child session could not finish logging out. ' +
+                           'No DEB files were installed; try again from the adult account. ' +
+                           blocked)
+    print('Child signed out. Administrator session and settings remain intact.', flush=True)
+    return True
 
 
 def save_snapshot():
@@ -258,14 +377,19 @@ def health_check():
     raise RuntimeError('ParentPilot service did not respond after updating.')
 
 
-def install(channel, expected_tag):
+def install(channel, expected_tag, allow_child_signout=False):
     if not configured_for_updates():
         raise RuntimeError(
             'This is not a fresh DEB-managed ParentPilot installation. '
             'Existing customised systems must not be updated automatically.')
     block_reason = child_session_block_reason()
-    if block_reason:
+    if block_reason and not allow_child_signout:
         raise RuntimeError(block_reason)
+    if block_reason and allow_child_signout and not signed_in_child_session(block_reason):
+        raise RuntimeError('Cannot safely identify the child session: ' + block_reason)
+    if allow_child_signout:
+        _, child_account = verified_child_account()
+        verify_adult_approved_signout(child_account.pw_uid)
     current = installed_version()
     release = fetch_updates(channel, current)
     if not release or release['tag'] != expected_tag:
@@ -276,6 +400,14 @@ def install(channel, expected_tag):
         archive = download_verified(release, directory)
         backup = save_snapshot()
         try:
+            # Do not sign out the child until the release was downloaded,
+            # verified and the private recovery snapshot completed.
+            signed_out = False
+            if allow_child_signout:
+                signed_out = sign_out_child_with_approval()
+            block_reason = child_session_block_reason()
+            if block_reason:
+                raise RuntimeError('Child session still running: ' + block_reason)
             print('Installing verified DEB through APT…', flush=True)
             cmd('apt-get', 'install', '-y', '--no-remove',
                 '--no-install-recommends', str(archive), timeout=300)
@@ -295,18 +427,23 @@ def install(channel, expected_tag):
             raise
     print('SUCCESS: updated ParentPilot to ' + release['version'] +
           '; child account, PIN, timer data and saved pictures retained.', flush=True)
-    print('Please ask the child to log in again to load the updated desktop.', flush=True)
+    if signed_out:
+        print('ParentPilot signed out the child for this update.', flush=True)
+    print('Sign the child back in when ready to use the updated desktop.', flush=True)
 
 
 def main():
     if os.geteuid() != 0:
         raise RuntimeError('Administrator authentication is required.')
-    if len(sys.argv) != 3 or sys.argv[1] not in ('stable', 'preview'):
-        raise ValueError('Usage: update_install.py stable|preview RELEASE_TAG')
-    channel, tag = sys.argv[1], sys.argv[2]
+    if len(sys.argv) not in (3, 4) or sys.argv[1] not in ('stable', 'preview'):
+        raise ValueError(
+            'Usage: update_install.py stable|preview RELEASE_TAG [--sign-out-child]')
+    if len(sys.argv) == 4 and sys.argv[3] != '--sign-out-child':
+        raise ValueError('Unsupported update option.')
+    channel, tag = sys.argv[1:3]
     if not TAG.fullmatch(tag):
         raise ValueError('Invalid release tag.')
-    install(channel, tag)
+    install(channel, tag, allow_child_signout=(len(sys.argv) == 4))
 
 
 if __name__ == '__main__':
