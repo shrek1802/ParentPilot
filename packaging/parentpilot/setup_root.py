@@ -51,8 +51,8 @@ def validate(data):
         raise ValueError('Child name must be 1–32 characters.')
     if not USERNAME.fullmatch(user) or user in ('root','maxfamily','nobody'):
         raise ValueError('Invalid child Linux username.')
-    if len(password) < 8 or len(password) > 128 or '\n' in password or ':' in password:
-        raise ValueError('Child account password must be 8–128 characters without a colon.')
+    if len(password) < 6 or len(password) > 128 or '\n' in password or ':' in password:
+        raise ValueError('Child account password must be 6–128 characters without a colon.')
     if not re.fullmatch(r'[0-9]{6}', pin) or pin in ('000000','111111','123456'):
         raise ValueError('Choose a less obvious six-digit parent PIN.')
     if data.get('youtube') not in ('kids','supervised'):
@@ -120,20 +120,26 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     panel=prop(panels,'panel-1','empty','')
     prop(panel,'position','string','p=10;x=0;y=0')
     prop(panel,'position-locked','bool','true')
-    prop(panel,'size','uint',46)
+    # Consistent compact 42px taskbar; launcher group is centred by two
+    # expanding separators rather than being crushed against the menu.
+    prop(panel,'size','uint',42)
     prop(panel,'length','uint',100)
     prop(panel,'length-adjust','bool','false')
     prop(panel,'autohide-behavior','uint',0)
     launcher_ids=[10,11]+([12] if youtube else [])+([13] if netflix else [])
-    plugin_ids=[1,*launcher_ids,20,21,22]
+    plugin_ids=[1,18,*launcher_ids,19,21,22]
     array(panel,'plugin-ids','int',plugin_ids)
     plugins=prop(root,'plugins','empty','')
     prop(prop(plugins,'plugin-1','string','applicationsmenu'),'show-button-title','bool','false')
     labels={10:'parentpilot-browser.desktop',11:'thunar.desktop',12:'parentpilot-youtube.desktop',13:'parentpilot-netflix.desktop'}
+    # Separator 18 and 19 expand equally; the tray and clock retain space
+    # on the right while the child app shortcuts form an uncluttered dock.
+    prop(prop(plugins,'plugin-18','string','separator'),'expand','bool','true')
+    prop(prop(plugins,'plugin-19','string','separator'),'expand','bool','true')
     for number in launcher_ids:
         p=prop(plugins,f'plugin-{number}','string','launcher')
         array(p,'items','string',[labels[number]])
-    prop(prop(plugins,'plugin-20','string','separator'),'expand','bool','true')
+    # Status icons and clock are kept in their own natural-size area.
     prop(plugins,'plugin-21','string','systray')
     prop(plugins,'plugin-22','string','clock')
     ET.indent(root,space='  ')
