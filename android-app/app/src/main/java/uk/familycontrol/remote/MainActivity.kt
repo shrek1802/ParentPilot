@@ -183,6 +183,7 @@ class MainActivity : Activity() {
         stateListAnimator = null
         val fill = when (variant) {
             "success" -> green
+            "blue" -> blue
             "warning" -> amber
             "danger" -> red
             "secondary" -> elevated
@@ -190,7 +191,7 @@ class MainActivity : Activity() {
             else -> teal
         }
         background = roundShape(fill, 13, if (variant == "outline") Color.rgb(72, 94, 122) else null)
-        setTextColor(if (variant in setOf("success", "warning", "primary")) navy else white)
+        setTextColor(if (variant in setOf("success", "warning", "primary", "blue")) navy else white)
         setOnClickListener { action() }
         parent.addView(this, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -395,69 +396,285 @@ class MainActivity : Activity() {
 
     private fun showDashboard(info: ParentState) {
         stopDiscovery()
-        resetPage("Connected securely · " + (client?.origin ?: ""))
-        val summary = panel()
-        summary.addView(title("Screen time"))
-        modeLabel = title(info.mode).also { summary.addView(it) }
-        timerLabel = text("Time left: " + info.remaining, 26f).also { summary.addView(it) }
-        presenceLabel = text(info.presence + " · Used today: " + info.used, 13f, muted).also { summary.addView(it) }
-        button(summary, "Refresh status") { refreshNow() }
+        state = info
+        selectedTab = 0
+        pollActive = true
+        lastGalleryKey = ""
+        renderTab(info)
+        uiHandler.postDelayed({ refreshLoop() }, 1600)
+    }
 
-        val clock = panel()
-        clock.addView(title("Set or add time"))
-        val input = field(clock, "Minutes (1–720)", "60", numbers = true)
-        button(clock, "Set remaining time") {
-            performMinutes("set", input.text.toString())
-        }
-        button(clock, "Add custom minutes") {
-            performMinutes("add", input.text.toString())
-        }
-        for (minutes in listOf(15, 30, 60, 120)) {
-            button(clock, "Add " + minutes + " minutes") { performAction("add", minutes) }
-        }
+    private fun navigateTo(tab: Int) {
+        val current = state ?: return
+        if (client == null || selectedTab == tab) return
+        selectedTab = tab
+        renderTab(current)
+    }
 
+    private fun renderTab(info: ParentState) {
+        container.removeAllViews()
+        scroll.scrollTo(0, 0)
+        nav.visibility = View.VISIBLE
+        timerLabel = null
+        modeLabel = null
+        presenceLabel = null
+        screenStatus = null
+        preview = null
+        saveButton = null
+        gallery = null
+        childStatus = null
+        val heading = when (selectedTab) {
+            1 -> "Manage time"
+            2 -> "Screen viewer"
+            3 -> "Preferences"
+            else -> "Dashboard"
+        }
+        drawHeader(heading)
+        when (selectedTab) {
+            1 -> drawTimePage(info)
+            2 -> drawScreenPage(info)
+            3 -> drawSettingsPage(info)
+            else -> drawHomePage(info)
+        }
+        drawNav()
+        applyState(info)
+    }
+
+    private fun drawHeader(heading: String) {
+        val header = row(container)
+        header.addView(ImageView(this).apply {
+            setImageResource(R.drawable.parentpilot_icon)
+            contentDescription = "ParentPilot"
+        }, LinearLayout.LayoutParams(45.dp(), 45.dp()))
+        val labels = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(12.dp(), 0, 6.dp(), 0)
+        }
+        labels.addView(text("ParentPilot", 20f).apply {
+            typeface = android.graphics.Typeface.create("sans-serif-medium", 0)
+        })
+        labels.addView(caption(heading.uppercase()))
+        header.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val online = text("●  Linked", 12f, green).apply {
+            setPadding(10.dp(), 7.dp(), 10.dp(), 7.dp())
+            gravity = Gravity.CENTER
+            background = roundShape(Color.rgb(20, 65, 60), 30)
+        }
+        header.addView(online)
+        container.addView(View(this), LinearLayout.LayoutParams(1, 20.dp()))
+    }
+
+    private fun drawNav() {
+        nav.removeAllViews()
+        val items = listOf("⌂\nHome", "◷\nTime", "▣\nScreen", "⚙\nMore")
+        items.forEachIndexed { index, label ->
+            val active = index == selectedTab
+            val tab = text(label, 12f, if (active) teal else muted).apply {
+                gravity = Gravity.CENTER
+                setPadding(1.dp(), 6.dp(), 1.dp(), 5.dp())
+                typeface = android.graphics.Typeface.create("sans-serif-medium", 0)
+                background = roundShape(if (active) Color.rgb(25, 68, 74) else slate, 13)
+                contentDescription = label.substringAfter("\n") + " tab"
+                setOnClickListener { navigateTo(index) }
+            }
+            nav.addView(tab, LinearLayout.LayoutParams(0, 55.dp(), 1f).apply {
+                marginStart = 3.dp()
+                marginEnd = 3.dp()
+            })
+        }
+    }
+
+    private fun badge(value: String, style: String): TextView {
+        val tint = when (style) {
+            "warning" -> amber
+            "success" -> green
+            "danger" -> red
+            else -> blue
+        }
+        val bg = when (style) {
+            "warning" -> Color.rgb(68, 50, 35)
+            "success" -> Color.rgb(25, 66, 55)
+            "danger" -> Color.rgb(77, 37, 49)
+            else -> Color.rgb(34, 53, 81)
+        }
+        return text("●  " + value, 13f, tint).apply {
+            background = roundShape(bg, 13)
+            setPadding(12.dp(), 8.dp(), 12.dp(), 8.dp())
+            gravity = Gravity.CENTER
+        }
+    }
+
+    private fun stateStyle(mode: String): String = when {
+        mode.contains("pause", true) -> "warning"
+        mode.contains("expire", true) || mode.contains("end", true) -> "danger"
+        mode.contains("available", true) || mode.contains("unlimited", true) ||
+            mode.contains("free", true) -> "success"
+        else -> "info"
+    }
+
+    private fun quickButton(parent: LinearLayout, label: String, variant: String, action: () -> Unit): TextView {
+        val tint = when (variant) {
+            "success" -> green
+            "warning" -> amber
+            "danger" -> red
+            "blue" -> blue
+            else -> teal
+        }
+        val fill = if (variant == "outline") elevated else tint
+        return text(label, 14f, if (variant == "outline") white else navy).apply {
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(5.dp(), 11.dp(), 5.dp(), 11.dp())
+            background = roundShape(fill, 13, if (variant == "outline") tint else null)
+            minHeight = 48.dp()
+            setOnClickListener { action() }
+            parent.addView(this, LinearLayout.LayoutParams(0, 49.dp(), 1f).apply {
+                marginStart = 4.dp()
+                marginEnd = 4.dp()
+            })
+        }
+    }
+
+    private fun drawHero(info: ParentState) {
+        val card = panel(gradient = true)
+        card.addView(caption("CHILD DEVICE"))
+        val top = row(card)
+        top.addView(title(info.child + "'s laptop"), LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        childStatus = badge(info.mode, stateStyle(info.mode)).also { top.addView(it) }
+        card.addView(View(this), LinearLayout.LayoutParams(1, 18.dp()))
+        card.addView(caption("TIME REMAINING", Color.rgb(190, 215, 237)))
+        timerLabel = text(info.remaining, 39f).apply {
+            typeface = android.graphics.Typeface.create("sans-serif-light", 0)
+            setPadding(0, 2.dp(), 0, 4.dp())
+        }.also { card.addView(it) }
+        card.addView(View(this).apply {
+            setBackgroundColor(Color.rgb(67, 92, 120))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1.dp()).apply {
+            topMargin = 12.dp()
+            bottomMargin = 12.dp()
+        })
+        presenceLabel = caption(info.presence + "    ·    Used today " + info.used).also { card.addView(it) }
+    }
+
+    private fun drawHomePage(info: ParentState) {
+        drawHero(info)
+        val controls = panel()
+        controls.addView(title("Quick actions"))
+        controls.addView(caption("The controls you'll use most often."))
+        val actions = row(controls)
+        if (info.mode.contains("pause", true) || info.mode.contains("expire", true)) {
+            quickButton(actions, "＋ Add 30m", "blue") { performAction("add", 30) }
+            quickButton(actions, "▶ Resume", "success") { performAction("resume") }
+            if (info.remaining == "0:00") controls.addView(
+                caption("If time is zero, add minutes and then press Resume."))
+        } else {
+            quickButton(actions, "Ⅱ Pause", "warning") { performAction("pause") }
+            quickButton(actions, "＋ Add 30m", "blue") { performAction("add", 30) }
+        }
+        val details = panel()
+        details.addView(title("Time adjustments"))
+        details.addView(caption("QUICK ADD"))
+        val presets = row(details)
+        listOf(15, 30, 60).forEach { mins ->
+            chip(presets, "+" + mins + "m") { performAction("add", mins) }
+        }
+        details.addView(View(this), LinearLayout.LayoutParams(1, 10.dp()))
+        button(details, "Custom time settings    →", "outline") { navigateTo(1) }
+        val screenCard = panel()
+        screenCard.addView(title("Screen snapshots"))
+        screenCard.addView(caption("Request a picture and review saved screenshots in ParentPilot."))
+        button(screenCard, "Open screen viewer    →", "secondary") { navigateTo(2) }
+    }
+
+    private fun drawTimePage(info: ParentState) {
+        drawHero(info)
+        val manage = panel()
+        manage.addView(title("Adjust screen time"))
+        manage.addView(caption("QUICK ADD"))
+        val presets = row(manage)
+        listOf(15, 30, 60, 120).forEach { mins ->
+            chip(presets, if (mins >= 60) "+" + mins / 60 + "h" else "+" + mins + "m") {
+                performAction("add", mins)
+            }
+        }
+        manage.addView(View(this), LinearLayout.LayoutParams(1, 15.dp()))
+        manage.addView(caption("CUSTOM TIME (MINUTES)"))
+        val input = field(manage, "Enter 1–720 minutes", "60", numbers = true)
+        button(manage, "＋ Add minutes", "blue") { performMinutes("add", input.text.toString()) }
+        button(manage, "Set remaining time", "outline") { performMinutes("set", input.text.toString()) }
         val access = panel()
         access.addView(title("Laptop access"))
-        button(access, "Pause laptop") { performAction("pause") }
-        button(access, "Resume laptop") { performAction("resume") }
-        button(access, "Unlimited time today") { performAction("unlimited") }
-        button(access, "Return to managed time") { performAction("managed") }
-        button(access, "End time for today") {
-            AlertDialog.Builder(this).setTitle("End screen time?")
-                .setMessage("End this child's remaining time for today?")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("End time") { _, _ -> performAction("end") }.show()
-        }
+        access.addView(caption("Pause or resume the child session"))
+        val pair = row(access)
+        quickButton(pair, "Ⅱ Pause", "warning") { performAction("pause") }
+        quickButton(pair, "▶ Resume", "success") { performAction("resume") }
+        access.addView(View(this), LinearLayout.LayoutParams(1, 13.dp()))
+        button(access, "Unlimited time for today", "secondary") { performAction("unlimited") }
+        button(access, "Return to managed time", "outline") { performAction("managed") }
+        val limits = panel()
+        limits.addView(title("End today's access"))
+        limits.addView(caption("This ends today's available time. You can grant more later."))
+        button(limits, "End screen time today", "danger") { confirmEndTime() }
+    }
 
-        val screenshot = panel()
-        screenshot.addView(title("View child's screen"))
-        screenshot.addView(text(
-            "One parent-requested picture, not a video stream. The laptop shows a viewing notice.",
-            13f, muted))
-        screenStatus = text("", 14f).also { screenshot.addView(it) }
-        button(screenshot, "Take one screen picture") { takePicture() }
+    private fun confirmEndTime() {
+        AlertDialog.Builder(this).setTitle("End screen time?")
+            .setMessage("End this child's remaining screen time for today?")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("End time") { _, _ -> performAction("end") }.show()
+    }
+
+    private fun drawScreenPage(info: ParentState) {
+        val screenshot = panel(gradient = true)
+        screenshot.addView(title("View the child screen"))
+        screenshot.addView(caption("One requested picture · visible notice on the child's laptop"))
+        screenStatus = text("Picture status: " + info.screenStatus, 14f, muted)
+            .also { screenshot.addView(it) }
+        button(screenshot, "▣ Take a screen picture", "blue") { takePicture() }
         preview = ImageView(this).apply {
             adjustViewBounds = true
             scaleType = ImageView.ScaleType.FIT_CENTER
             visibility = View.GONE
             setOnClickListener {
-                latestBytes?.let { bytes -> openPictureViewer(bytes, "Screen picture") }
+                latestBytes?.let { bytes -> openPictureViewer(bytes, "Child screen") }
             }
+            contentDescription = "Tap to enlarge the latest screenshot"
+            background = roundShape(elevated, 12)
         }
         screenshot.addView(preview, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = 10.dp() })
-        saveButton = button(screenshot, "Save current picture to laptop gallery") {
+        ).apply { topMargin = 9.dp(); bottomMargin = 9.dp() })
+        saveButton = button(screenshot, "Save picture to gallery", "outline") {
             performAction("save-screen")
         }
-
+        if (!info.screenEnabled) screenshot.addView(
+            caption("Screen pictures must first be enabled on the laptop."))
         val saved = panel()
-        saved.addView(title("Saved screen pictures"))
-        saved.addView(text("Screenshots are kept on the laptop only when you choose Save. Up to 20 pictures.", 13f, muted))
+        saved.addView(title("Saved pictures"))
+        saved.addView(caption("Private laptop gallery · " + info.pictures.size + " of 20 saved"))
         gallery = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         saved.addView(gallery)
+        lastGalleryKey = ""
+    }
+
+    private fun drawSettingsPage(info: ParentState) {
+        val device = panel(gradient = true)
+        device.addView(title("Connected laptop"))
+        device.addView(caption(info.child + "'s laptop"))
+        device.addView(text(client?.origin.orEmpty(), 13f))
+        device.addView(badge("Secure connection", "success"))
+        button(device, "Refresh connection", "outline") { refreshNow() }
+        val privacy = panel()
+        privacy.addView(title("Privacy & safety"))
+        privacy.addView(text("Your parent PIN is not stored in the app. " +
+            "Local connections use the laptop certificate you verified during setup.", 14f, muted))
+        privacy.addView(text("Screen captures are requested individually. " +
+            "Saved pictures stay on the laptop until a parent deletes them.", 14f, muted))
         val account = panel()
-        button(account, "Sign out / Change laptop") {
+        account.addView(title("Account"))
+        button(account, "Sign out / Change laptop", "danger") {
             val old = client
             pollActive = false
             client = null
@@ -467,10 +684,7 @@ class MainActivity : Activity() {
             showConnection()
             if (old != null) worker.execute { old.logout() }
         }
-
-        applyState(info)
-        pollActive = true
-        uiHandler.postDelayed({ refreshLoop() }, 1600)
+        account.addView(caption("ParentPilot · Native Android preview"))
     }
 
     private fun performMinutes(action: String, value: String) {
