@@ -13,7 +13,7 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: all
-Depends: \${misc:Depends}, python3, python3-tk, python3-gi, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, openssl, acl, chromium | chromium-browser, avahi-daemon, xfce4-session, xfce4-panel, pkexec, libnotify-bin, ca-certificates, playerctl, pulseaudio-utils, dbus-x11, libx11-6
+Depends: \${misc:Depends}, python3, python3-tk, python3-gi, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, openssl, acl, chromium | chromium-browser, vlc, avahi-daemon, xfce4-session, xfce4-panel, pkexec, libnotify-bin, ca-certificates, playerctl, pulseaudio-utils, dbus-x11, libx11-6
 Suggests: lightdm
 Maintainer: ParentPilot Project <47456335+shrek1802@users.noreply.github.com>
 Homepage: https://github.com/shrek1802/ParentPilot
