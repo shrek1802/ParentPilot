@@ -11,8 +11,8 @@ android {
         applicationId = "uk.familycontrol.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.4.1-ui-preview"
+        versionCode = 7
+        versionName = "0.4.2-updates-preview"
     }
     // The applicationId is unchanged so Android recognises this as the same app.
     // In-place installation ALSO requires the previous APK signing certificate.
@@ -41,4 +41,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+}
+
+// Scoped APK-sharing provider. No public storage access is required.
+dependencies {
+    implementation("androidx.core:core:1.15.0")
 }
