@@ -34,7 +34,7 @@ jobs:
             test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.status')" = completed
             test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.conclusion')" = success
           done
-          test "$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease')" = true
+          test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')" = true
           test -n "$EXPECTED_CERT"
       - name: Download final signed APK and current Linux DEB
         run: |
