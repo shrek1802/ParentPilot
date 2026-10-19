@@ -53,7 +53,16 @@ def valid_release_asset(item, release, channel, current_version, compare=newer_v
     match = ASSET.fullmatch(name)
     if match is None:
         return None
-    version = match.group(1)
+    # GitHub Release uploads normalise '~' to '.' in asset filenames.
+    # Never treat a normalised filename as a Debian package version.
+    # The version is derived from the publisher's strict version tag and
+    # verified again from the DEB control metadata during installation.
+    published_version = tag[1:] if tag.startswith('v') else tag
+    published_version = published_version.replace('-preview', '~preview').replace('-rc', '~rc')
+    asset_version = match.group(1)
+    if asset_version not in (published_version, published_version.replace('~', '.')):
+        return None
+    version = published_version
     if not compare(version, current_version):
         return None
     digest_match = DIGEST.fullmatch(str(item.get('digest') or ''))
