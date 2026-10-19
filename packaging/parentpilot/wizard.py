@@ -12,6 +12,8 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from games_catalog import GAMES
+
 ROOT = Path('/usr/lib/parentpilot')
 MARKER = Path('/etc/max-family-control/config.json')
 BG = '#101a30'; CARD = '#1b2a41'; TEXT = '#f8fafc'; SUB = '#b9ccdf'; BLUE = '#38bdf8'; TEAL = '#26c5b4'
@@ -52,6 +54,10 @@ class Wizard:
             'family_filter':tk.BooleanVar(value=True),
             'screen_view':tk.BooleanVar(value=False),
         }
+        # Optional game choices are independent of child account/settings
+        # and default OFF to avoid cluttering older laptops.
+        self.game_choices = {game_id: tk.BooleanVar(value=False)
+                             for game_id, *_ in GAMES}
         self.v['child_name'].trace_add('write', self.suggest_user)
         self.main=tk.Frame(self.root,bg=BG)
         self.main.pack(fill='both',expand=True,padx=28,pady=20)
@@ -105,7 +111,8 @@ class Wizard:
         return e
 
     def checked(self,parent,label,key):
-        tk.Checkbutton(parent,text=label,variable=self.v[key],bg=parent.cget('bg'),
+        value = self.game_choices[key[5:]] if key.startswith('game:') else self.v[key]
+        tk.Checkbutton(parent,text=label,variable=value,bg=parent.cget('bg'),
                        fg=TEXT,activebackground=parent.cget('bg'),selectcolor=BG,
                        activeforeground=TEXT,font=('DejaVu Sans',11),anchor='w').pack(fill='x',pady=8)
 
@@ -197,6 +204,19 @@ class Wizard:
         self.lbl(self.body,'Filtering policies apply to ALL Chromium accounts on this computer, including the parent. YouTube and Netflix age/profile settings must be set up separately.',10,SUB,pad=7)
         self.checked(self.body,"Optional: let a parent request a picture of the child's screen",'screen_view')
         self.lbl(self.body,'OFF by default. If enabled, a signed-in parent can ask for one screen picture without the child approving each request. The child sees a clear on-screen viewing notice each time. No hidden capture, live video or recording. Each picture expires after 30 seconds.',10,SUB,pad=7)
+        self.lbl(self.body, 'Optional free games (tick any you want)', 12, TEXT, True, pad=18)
+        self.lbl(self.body,
+                 'Suitable for many older PCs including the Dell Inspiron N5110. '
+                 'No games are selected by default. Downloads need internet access. '
+                 'They appear in the normal Linux applications menu.',
+                 10, SUB, wrap=625, pad=2)
+        last_category = ''
+        for game_id, title, category, description, package in GAMES:
+            if category != last_category:
+                last_category = category
+                self.lbl(self.body, category.upper(), 10, TEAL, True, pad=10)
+            self.checked(self.body, title + ' — ' + description,
+                         'game:' + game_id)
 
     def review(self):
         self.lbl(self.body,'Ready to install',18,TEXT,True)
@@ -206,7 +226,12 @@ class Wizard:
         self.lbl(self.body,'Child automatic login: '+('Yes' if self.v['autologin'].get() else 'No'),11,SUB)
         self.lbl(self.body,'Chromium family policy: '+('Enabled' if self.v['family_filter'].get() else 'Not enabled'),11,SUB)
         self.lbl(self.body,'Screen picture requests: '+('Parent-authorised, with a visible child notice' if self.v['screen_view'].get() else 'Off'),11,SUB)
-        self.lbl(self.body,'The child’s desktop will have a curated bottom bar with Chromium, YouTube, Files and optionally Netflix. Hidden menu icons are not an OS-level app block.',11,SUB,pad=25)
+        chosen = [title for game_id, title, *_ in GAMES if self.game_choices[game_id].get()]
+        self.lbl(self.body, 'Free games: ' +
+                 (', '.join(chosen) if chosen else 'None selected'), 10, SUB, wrap=620, pad=10)
+        self.lbl(self.body,'The child keeps the normal Linux Mint applications menu, '
+                 'including VLC and other programs. Other browser shortcuts are hidden '
+                 'from the menu, but menu hiding alone does not block browsers.',11,SUB,pad=15)
         self.lbl(self.body,'Installing requires your existing ADMINISTRATOR password in the system authentication popup. The child’s six-digit PIN will never appear in this window.',10,TEAL,pad=17)
         self.result=tk.Text(self.body,height=7,bg='#0d1728',fg=TEXT,insertbackground=TEXT,font=('DejaVu Sans Mono',9),wrap='word')
         self.result.pack(fill='both',expand=True,pady=(15,2))
@@ -255,11 +280,12 @@ class Wizard:
         self.installing=True
         self.append('Requesting administrator permission…')
         data={k:v.get() for k,v in self.v.items() if k not in ('child_password2','parent_pin2')}
+        data['games'] = [key for key, var in self.game_choices.items() if var.get()]
         # Never put secrets in command-line arguments, desktop files or persistent logs.
         def task():
             try:
                 proc=subprocess.run(['pkexec','/usr/lib/parentpilot/setup-root','--from-wizard'],
-                                    input=json.dumps(data),text=True,capture_output=True,timeout=240)
+                                    input=json.dumps(data),text=True,capture_output=True,timeout=3000)
                 success=(proc.returncode==0)
                 output=(proc.stdout+'\n'+proc.stderr).strip()
                 self.root.after(0,lambda:self.finish(success,output))
