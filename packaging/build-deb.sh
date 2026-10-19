@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview11
+VERSION=0.5.0~preview12
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -53,8 +53,10 @@ cat > "$STAGING/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml" <<'E
   <url type="homepage">https://github.com/shrek1802/ParentPilot</url>
 </component>
 EOF
-install -m 0644 "$ROOT/packaging/parentpilot/youtube.svg" "$STAGING/usr/lib/parentpilot/icons/youtube.svg"
-install -m 0644 "$ROOT/packaging/parentpilot/netflix.svg" "$STAGING/usr/lib/parentpilot/icons/netflix.svg"
+for icon in browser.svg files.svg youtube.svg netflix.svg; do
+    install -m 0644 "$ROOT/packaging/parentpilot/$icon" "$STAGING/usr/lib/parentpilot/icons/$icon"
+done
+
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
 install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
 install -m 0644 "$ROOT/packaging/parentpilot/child_panel.py" "$STAGING/usr/lib/parentpilot/child_panel.py"
