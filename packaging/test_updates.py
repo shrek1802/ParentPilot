@@ -113,6 +113,59 @@ with tempfile.TemporaryDirectory() as scratch:
                                       pw_uid=os.getuid(), pw_gid=os.getgid())
     assert not upd.configured_for_updates()
     upd.MARKER.write_text('ParentPilot-DEB-managed-v1')
+    # logind may retain a non-interactive "closing" entry after a logout.
+    # Switching user is NOT logout: an inactive online child desktop must
+    # still block updates, as must any closing XFCE/lock process.
+    from unittest.mock import patch
+    def mock_loginctl(session_state='online', active='no', owner='testchild',
+                      listing='c3 1001 testchild seat0 tty7\n', processes=''):
+        def runner(*args, **kwargs):
+            if args[:2] == ('loginctl', 'list-sessions'):
+                return types.SimpleNamespace(stdout=listing)
+            if args[:2] == ('loginctl', 'show-session'):
+                return types.SimpleNamespace(stdout=(
+                    'Name=' + owner + '\nState=' + session_state +
+                    '\nActive=' + active + '\nType=x11\n'))
+            raise AssertionError('Unexpected loginctl command: ' + repr(args))
+        def ps_runner(args, **kwargs):
+            assert args == ['ps', '-u', 'testchild', '-o', 'args=']
+            return types.SimpleNamespace(returncode=0, stdout=processes)
+        return runner, ps_runner
+
+    own_cmd = upd.cmd
+    try:
+        with patch.object(upd.subprocess, 'run') as mocked_ps:
+            for state, active in [('online', 'no'), ('active', 'yes')]:
+                upd.cmd, mock_ps = mock_loginctl(state, active)
+                mocked_ps.side_effect = mock_ps
+                reason = upd.child_session_block_reason()
+                assert reason and 'session c3' in reason and 'terminate-user' in reason
+                assert upd.child_signed_in()
+
+            # Closing stale session with no graphical/lock process is safe.
+            upd.cmd, mock_ps = mock_loginctl('closing', 'no')
+            mocked_ps.side_effect = mock_ps
+            assert upd.child_session_block_reason() is None
+            assert not upd.child_signed_in()
+
+            # But a closing session still running XFCE must remain blocked.
+            upd.cmd, mock_ps = mock_loginctl(
+                'closing', 'no', processes='/usr/bin/xfce4-session\n')
+            mocked_ps.side_effect = mock_ps
+            assert 'still shutting down' in upd.child_session_block_reason()
+
+            # Incomplete/contradictory loginctl output must fail closed.
+            upd.cmd, mock_ps = mock_loginctl('online', 'no', owner='intruder')
+            mocked_ps.side_effect = mock_ps
+            assert 'Cannot safely confirm' in upd.child_session_block_reason()
+            upd.cmd, mock_ps = mock_loginctl(listing='malformed\n')
+            assert upd.child_signed_in()
+            upd.cmd, mock_ps = mock_loginctl(listing='')
+            assert not upd.child_signed_in()
+    finally:
+        upd.cmd = own_cmd
+    print('PASS: real child GUI blocks, stale closing sessions clear, malformed status fails closed')
+
     assert upd.configured_for_updates()
     saved_version = upd.installed_version
     saved_command = upd.cmd
