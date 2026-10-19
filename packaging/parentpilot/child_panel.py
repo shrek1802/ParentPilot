@@ -75,6 +75,55 @@ def array(parent,name,typ,values):
     return p
 
 
+def write_child_menu(home, youtube=True, netflix=True):
+    """Create an explicit allowlisted XDG applications menu for this child.
+
+    Cosmetic convenience only: hiding desktop entries is not an operating-
+    system security boundary. Never change the adult XFCE applications menu.
+    """
+    home = Path(home)
+    applications = home / '.local/share/applications'
+    applications.mkdir(parents=True, exist_ok=True)
+    menu_dir = home / '.config/menus'
+    menu_dir.mkdir(parents=True, exist_ok=True)
+    files = applications / 'parentpilot-files.desktop'
+    files.write_text(
+        '[Desktop Entry]\\nType=Application\\nName=Files\\n'
+        'Exec=thunar\\nIcon=' + str(ICONS[11]) +
+        '\\nTerminal=false\\nCategories=Utility;\\n',
+        encoding='utf8')
+    logout = applications / 'parentpilot-logout.desktop'
+    logout.write_text(
+        '[Desktop Entry]\\nType=Application\\nName=Log out\\n'
+        'Exec=xfce4-session-logout\\nIcon=system-log-out\\n'
+        'Terminal=false\\nCategories=System;\\n',
+        encoding='utf8')
+    names = ['parentpilot-browser.desktop', 'parentpilot-files.desktop']
+    if youtube:
+        names.append('parentpilot-youtube.desktop')
+    if netflix:
+        names.append('parentpilot-netflix.desktop')
+    names.append('parentpilot-logout.desktop')
+    root = ET.Element('Menu')
+    ET.SubElement(root, 'Name').text = 'ParentPilot'
+    ET.SubElement(root, 'AppDir').text = str(applications)
+    include = ET.SubElement(root, 'Include')
+    layout = ET.SubElement(root, 'Layout')
+    for name in names:
+        ET.SubElement(include, 'Filename').text = name
+        if name == 'parentpilot-logout.desktop':
+            ET.SubElement(layout, 'Separator')
+        ET.SubElement(layout, 'Filename').text = name
+    ET.indent(root, space='  ')
+    menu = menu_dir / 'parentpilot.menu'
+    menu.write_bytes(
+        (b'<?xml version="1.0" encoding="UTF-8"?>\\n'
+         b'<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN" '
+         b'"http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">\\n'
+         + ET.tostring(root, encoding='utf-8')))
+    return menu
+
+
 def write_child_panel(home, group, youtube=True, netflix=True):
     """Only for freshly created child homes. Single bottom XFCE panel with curated launchers.
     This customisation changes visible launchers, not access control or parent panel.
@@ -89,7 +138,8 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     prop(panel,'position-locked','bool','true')
     # Consistent compact 42px taskbar; launcher group is centred by two
     # expanding separators rather than being crushed against the menu.
-    prop(panel,'size','uint',42)
+    prop(panel,'size','uint',40)
+    prop(panel,'icon-size','uint',28)
     prop(panel,'length','uint',100)
     prop(panel,'length-adjust','bool','false')
     prop(panel,'autohide-behavior','uint',0)
@@ -99,6 +149,8 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     plugins=prop(root,'plugins','empty','')
     app_menu = prop(plugins,'plugin-1','string','applicationsmenu')
     prop(app_menu,'show-button-title','bool','false')
+    prop(app_menu,'custom-menu','bool','true')
+    prop(app_menu,'custom-menu-file','string',str(home/'.config/menus/parentpilot.menu'))
     # Avoid an unknown XFCE menu glyph when the Mint icon theme differs.
     prop(app_menu,'button-icon','string','/usr/share/icons/hicolor/64x64/apps/parentpilot.png')
     labels={10:'parentpilot-browser.desktop',11:'thunar.desktop',12:'parentpilot-youtube.desktop',13:'parentpilot-netflix.desktop'}
@@ -112,10 +164,15 @@ def write_child_panel(home, group, youtube=True, netflix=True):
         p=prop(plugins,f'plugin-{number}','string','launcher')
         array(p,'items','string',[labels[number]])
     # Status icons and clock are kept in their own natural-size area.
-    prop(plugins,'plugin-21','string','systray')
-    prop(plugins,'plugin-22','string','clock')
+    tray = prop(plugins,'plugin-21','string','systray')
+    prop(tray, 'icon-size', 'int', 18)
+    prop(tray, 'single-row', 'bool', 'true')
+    clock = prop(plugins,'plugin-22','string','clock')
+    prop(clock, 'mode', 'uint', 2)
+    prop(clock, 'digital-format', 'string', '%H:%M')
     ET.indent(root,space='  ')
     ET.ElementTree(root).write(conf/'xfce4-panel.xml',encoding='utf-8',xml_declaration=True)
+    write_child_menu(home, youtube=youtube, netflix=netflix)
     # Reapply the curated dock through the active XFCE settings service on
     # the child's NEXT login. Updating the offline XML alone can be ignored
     # by a cached xfconfd process.
@@ -188,7 +245,7 @@ def repair_child_panel():
 # process can keep the previous left-aligned layout after a package upgrade,
 # or overwrite edited XML when the child next signs in. Apply layout once in
 # the CHILD's own graphical session, through xfconf-query, after XFCE starts.
-LAYOUT_REVISION = 'centre-shortcuts-v4-icons'
+LAYOUT_REVISION = 'family-menu-compact-tray-v5'
 
 
 def xfconf_commands_for_panel(home):
@@ -217,7 +274,21 @@ def xfconf_commands_for_panel(home):
         [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/show-button-title',
          '-n', '-t', 'bool', '-s', 'false'],
         [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/size',
-         '-n', '-t', 'uint', '-s', '42'],
+         '-n', '-t', 'uint', '-s', '40'],
+        [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/icon-size',
+         '-n', '-t', 'uint', '-s', '28'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/custom-menu',
+         '-n', '-t', 'bool', '-s', 'true'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/custom-menu-file',
+         '-n', '-t', 'string', '-s', str(home/'.config/menus/parentpilot.menu')],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-21/icon-size',
+         '-n', '-t', 'int', '-s', '18'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-21/single-row',
+         '-n', '-t', 'bool', '-s', 'true'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-22/mode',
+         '-n', '-t', 'uint', '-s', '2'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-22/digital-format',
+         '-n', '-t', 'string', '-s', '%H:%M'],
     ]
     for plugin_id in (18, 19):
         commands.extend([
@@ -257,6 +328,9 @@ def apply_session_panel(home=None, runner=subprocess.run):
     marker = state / ('panel-' + LAYOUT_REVISION + '.done')
     if marker.exists():
         return True
+    if not (user_home/'.config/menus/parentpilot.menu').is_file():
+        print('DEFERRED: child application menu is not installed.')
+        return False
     if not shutil.which('xfconf-query'):
         print('DEFERRED: xfconf-query not available yet.')
         return False
