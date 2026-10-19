@@ -29,85 +29,89 @@ with tempfile.TemporaryDirectory() as d:
         path=home/'.local/share/applications'/x
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text('[Desktop Entry]\nType=Application\nName=Test\nExec=true\n')
+    # Simulate Preview 8-13's mistaken hidden programs: newer versions must
+    # restore regular educational Linux apps but still hide other browsers.
+    from parentpilot import child_panel as cp
+    apps=home/'.local/share/applications'
+    for name in ('xfce4-terminal.desktop', 'mintinstall.desktop', 'org.xfce.appfinder.desktop'):
+        (apps/name).write_text(cp.OLD_HIDDEN_ENTRY)
+    (apps/'my-art-project.desktop').write_text(
+        '[Desktop Entry]\\nType=Application\\nName=My Drawing\\n'
+        'Exec=true\\nCategories=Graphics;\\n')
+    (apps/'firefox.desktop').write_text(cp.OLD_HIDDEN_ENTRY)
     m.write_child_panel(home,1000,netflix=True)
     x=ET.parse(home/'.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
     assert x.getroot().attrib['name']=='xfce4-panel'
     assert all('value' not in elem.attrib for elem in x.findall(".//property[@type='array']")+x.findall(".//property[@type='empty']"))
     assert list((home/'.config/xfce4/panel').glob('launcher-*/**/*.desktop'))
 
-    # Existing Preview 8-11 launchers may have generic theme icons or badly
-    # escaped desktop entries. Preview 12 must repair the REAL launcher
-    # files, not only regenerate xfce4-panel.xml.
+    # This is a regular learning computer, not a whitelisted-only kiosk.
+    # Keep default XFCE menus, normal installed apps and VLC media player.
     from parentpilot.child_panel import ICONS
     expected = {
         10: 'parentpilot-browser.desktop',
         11: 'thunar.desktop',
         12: 'parentpilot-youtube.desktop',
         13: 'parentpilot-netflix.desktop',
+        14: 'parentpilot-vlc.desktop',
     }
     for number, name in expected.items():
         active = home/'.config/xfce4/panel'/f'launcher-{number}'/name
         assert active.is_file(), (number, name)
         raw = active.read_text()
-        lines = raw.splitlines()
-        assert lines[0] == '[Desktop Entry]', (number, repr(raw[:120]))
-        assert 'Type=Application' in lines
-        assert 'Icon=' + str(ICONS[number]) in lines
-        assert not any('\\n' in line for line in lines), 'Malformed literal newline escape'
-        assert 'Exec=' in raw
-        if number in (10, 12, 13):
-            original = home/'.local/share/applications'/name
-            assert original.read_text() == raw, 'Panel should match repaired child app entry'
-            assert 'Exec=true' in raw, 'Preserve child launcher command on repair'
-    icons = ['browser.svg', 'files.svg', 'youtube.svg', 'netflix.svg']
-    for name in icons:
+        assert raw.startswith('[Desktop Entry]\n'), (number, repr(raw[:100]))
+        assert '\nExec=' in raw and '\nIcon=' in raw
+        assert r'\n' not in raw
+        if number == 14:
+            assert 'Exec=vlc %U\n' in raw
+            assert 'Icon=vlc\n' in raw
+        elif number in (10, 11, 12, 13):
+            assert 'Icon=' + str(ICONS[number]) in raw
+    for name in ('browser.svg', 'files.svg', 'youtube.svg', 'netflix.svg'):
         image = ET.parse(R/'parentpilot'/name).getroot()
         assert image.tag.endswith('svg'), name
 
-    from parentpilot import child_panel as cp
-    # The child menu must list only explicitly allowed family apps, not
-    # the default XFCE System, Settings, Office, or Run Program categories.
-    menu = home / '.config/menus/parentpilot.menu'
-    xml = ET.parse(menu).getroot()
-    included = [n.text for n in xml.findall('./Include/Filename')]
-    assert included == [
-        'parentpilot-browser.desktop', 'parentpilot-files.desktop',
-        'parentpilot-youtube.desktop', 'parentpilot-netflix.desktop',
-        'parentpilot-logout.desktop',
-    ], included
-    assert xml.findtext('AppDir') == str(home/'.local/share/applications')
-    assert xml.find('./Include/All') is None
-    assert xml.find('./DefaultMergeDirs') is None
-    for filename in included:
-        entry = home/'.local/share/applications'/filename
-        raw = entry.read_text()
-        assert raw.startswith('[Desktop Entry]\n'), (filename, repr(raw))
-        assert '\nExec=' in raw and '\nIcon=' in raw, (filename, repr(raw))
-        assert r'\n' not in raw
-    assert (home/'.local/share/applications/parentpilot-files.desktop').read_text().find('Exec=thunar') != -1
-    assert 'xfce4-session-logout' in (home/'.local/share/applications/parentpilot-logout.desktop').read_text()
+    # All non-browser programs are accessible again in the normal app menu.
+    for name in ('xfce4-terminal.desktop', 'mintinstall.desktop',
+                 'org.xfce.appfinder.desktop'):
+        assert not (apps/name).exists(), name
+    assert (apps/'my-art-project.desktop').is_file(), 'User app must survive'
+    assert (apps/'firefox.desktop').read_text() == cp.OLD_HIDDEN_ENTRY
+    for name in ('google-chrome.desktop', 'brave-browser.desktop'):
+        assert 'Hidden=true' in (apps/name).read_text(), name
+    assert (apps/'parentpilot-vlc.desktop').is_file()
+
     app_menu = x.find(".//property[@name='plugin-1']")
-    assert app_menu.find("./property[@name='custom-menu']").get('value') == 'true'
-    assert app_menu.find("./property[@name='custom-menu-file']").get('value') == str(menu)
-    assert x.find(".//property[@name='panel-1']/property[@name='icon-size']").get('value') == '28'
-    assert x.find(".//property[@name='plugin-21']/property[@name='icon-size']").get('value') == '18'
+    assert app_menu.find("./property[@name='custom-menu']").get('value') == 'false'
+    assert app_menu.find("./property[@name='custom-menu-file']") is None
+    assert not (home/'.config/menus/parentpilot.menu').exists()
+    assert x.find(".//property[@name='panel-1']/property[@name='size']").get('value') == '44'
+    assert x.find(".//property[@name='panel-1']/property[@name='icon-size']").get('value') == '32'
+    assert x.find(".//property[@name='plugin-17']").get('value') == 'tasklist'
+    assert x.find(".//property[@name='plugin-21']/property[@name='icon-size']").get('value') == '20'
     assert x.find(".//property[@name='plugin-22']/property[@name='digital-format']").get('value') == '%H:%M'
 
-    # Optional Netflix must remain optional; YouTube Kids or supervised
-    # preference is retained by the .desktop file already in the child home.
+    # Netflix is optional and the child's existing YouTube choice is kept.
     with tempfile.TemporaryDirectory() as second:
         h2 = pathlib.Path(second)
-        cp.write_child_menu(h2, youtube=True, netflix=False)
-        names = [v.text for v in ET.parse(h2/'.config/menus/parentpilot.menu').getroot().findall('./Include/Filename')]
-        assert 'parentpilot-netflix.desktop' not in names
-        assert 'parentpilot-youtube.desktop' in names
+        p=h2/'.local/share/applications'
+        p.mkdir(parents=True)
+        for name in ('parentpilot-browser.desktop','parentpilot-youtube.desktop'):
+            (p/name).write_text('[Desktop Entry]\nType=Application\nName=Test\nExec=true\n')
+        cp.write_child_panel(h2, 1000, youtube=True, netflix=False)
+        assert not (p/'parentpilot-netflix.desktop').exists()
+        assert (h2/'.config/xfce4/panel/launcher-14/parentpilot-vlc.desktop').is_file()
+        panel = ET.parse(h2/'.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
+        ids2 = [int(q.get('value')) for q in panel.findall(".//property[@name='plugin-ids']/value")]
+        assert 13 not in ids2 and 14 in ids2
 
     # App launchers are centred, and systray/clock remain on the right.
     positions=[p.attrib.get('name') for p in x.findall(".//property[@name='plugin-ids']/value")]
     plugins=x.find(".//property[@name='plugin-ids']")
     assert plugins is not None
     ids=[int(v.attrib['value']) for v in plugins.findall('value')]
-    assert ids.index(18) < ids.index(10) < ids.index(19) < ids.index(21)
+    assert ids[:3] == [1, 17, 18]
+    assert ids.index(18) < ids.index(10) < ids.index(14) < ids.index(19) < ids.index(21)
     assert ids[-1] == 22
     for key in ('plugin-18','plugin-19'):
         spacer=x.find(f".//property[@name='{key}']/property[@name='expand']")
@@ -131,7 +135,8 @@ with tempfile.TemporaryDirectory() as d:
     for item in ['launcher-10/parentpilot-browser.desktop',
                  'launcher-11/thunar.desktop',
                  'launcher-12/parentpilot-youtube.desktop',
-                 'launcher-13/parentpilot-netflix.desktop']:
+                 'launcher-13/parentpilot-netflix.desktop',
+                 'launcher-14/parentpilot-vlc.desktop']:
         data = (home/'.config/xfce4/panel'/item).read_text()
         assert data.startswith('[Desktop Entry]\n'), (item, repr(data[:80]))
         assert '\nIcon=' in data, (item, repr(data))
@@ -148,8 +153,10 @@ with tempfile.TemporaryDirectory() as d:
     commands=cp.xfconf_commands_for_panel(home)
     assert len(commands) >= 8
     assert any('/panels/panel-1/plugin-ids' in c for c in commands)
-    assert any('/plugins/plugin-1/custom-menu-file' in c for c in commands)
-    assert any('/plugins/plugin-21/icon-size' in c and c[-1] == '18' for c in commands)
+    assert any('/plugins/plugin-1/custom-menu' in c and c[-1] == 'false' for c in commands)
+    assert any('/plugins/plugin-17' in c and 'tasklist' in c for c in commands)
+    assert any('/plugins/plugin-14/items' in c for c in commands)
+    assert any('/plugins/plugin-21/icon-size' in c and c[-1] == '20' for c in commands)
     assert any('/plugins/plugin-22/digital-format' in c and c[-1] == '%H:%M' for c in commands)
     assert all(c[0] == 'xfconf-query' and c[2] == 'xfce4-panel' for c in commands)
     with patch.object(cp.os, 'geteuid', return_value=1000), \
