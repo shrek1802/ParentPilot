@@ -14,6 +14,51 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+# The icon theme on fresh Mint installations varies. Use bundled SVG files
+# rather than bare theme names ('chromium', 'system-file-manager') that can
+# resolve to generic or blank placeholders on other laptops.
+ICON_DIR = Path('/usr/lib/parentpilot/icons')
+ICONS = {
+    10: ICON_DIR / 'browser.svg',
+    11: ICON_DIR / 'files.svg',
+    12: ICON_DIR / 'youtube.svg',
+    13: ICON_DIR / 'netflix.svg',
+}
+
+
+def ensure_launcher_icon(source, icon_file):
+    """Update only the Icon key of ParentPilot's own child launchers.
+
+    Preserve the current Exec, YouTube choice, arguments and user preferences.
+    If an existing launcher is missing, refuse to invent a replacement.
+    """
+    source = Path(source)
+    if not source.is_file() or source.is_symlink():
+        return False
+    lines = source.read_text(encoding='utf8').splitlines()
+    if not lines or '[Desktop Entry]' not in lines:
+        return False
+    seen = False
+    in_entry = False
+    updated = []
+    for line in lines:
+        if line.startswith('[') and line.endswith(']'):
+            in_entry = (line == '[Desktop Entry]')
+        if in_entry and line.startswith('Icon='):
+            if not seen:
+                updated.append('Icon=' + str(icon_file))
+                seen = True
+            continue
+        updated.append(line)
+    if not seen:
+        index = updated.index('[Desktop Entry]') + 1
+        updated.insert(index, 'Icon=' + str(icon_file))
+    fixed = '\n'.join(updated) + '\n'
+    if source.read_text(encoding='utf8') != fixed:
+        source.write_text(fixed, encoding='utf8')
+    return True
+
+
 def prop(parent, name, typ=None, value=None):
     attrs={'name':name}
     if typ is not None:
@@ -52,7 +97,10 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     plugin_ids=[1,18,*launcher_ids,19,21,22]
     array(panel,'plugin-ids','int',plugin_ids)
     plugins=prop(root,'plugins','empty','')
-    prop(prop(plugins,'plugin-1','string','applicationsmenu'),'show-button-title','bool','false')
+    app_menu = prop(plugins,'plugin-1','string','applicationsmenu')
+    prop(app_menu,'show-button-title','bool','false')
+    # Avoid an unknown XFCE menu glyph when the Mint icon theme differs.
+    prop(app_menu,'button-icon','string','/usr/share/icons/hicolor/64x64/apps/parentpilot.png')
     labels={10:'parentpilot-browser.desktop',11:'thunar.desktop',12:'parentpilot-youtube.desktop',13:'parentpilot-netflix.desktop'}
     # Separator 18 and 19 expand equally; the tray and clock retain space
     # on the right while the child app shortcuts form an uncluttered dock.
@@ -82,11 +130,21 @@ def write_child_panel(home, group, youtube=True, netflix=True):
         encoding='utf8')
     pdir=home/'.config/xfce4/panel'
     for number in launcher_ids:
-        folder=pdir/f'launcher-{number}'; folder.mkdir(parents=True,exist_ok=True)
+        folder=pdir/f'launcher-{number}'
+        folder.mkdir(parents=True,exist_ok=True)
         source=home/'.local/share/applications'/labels[number]
         if number==11:
-            (folder/'thunar.desktop').write_text('[Desktop Entry]\nType=Application\nName=Files\nExec=thunar\nIcon=system-file-manager\nTerminal=false\n',encoding='utf8')
-        elif source.is_file(): shutil.copy2(source,folder/labels[number])
+            # The stock Thunar icon name depends on the theme: use a stable
+            # folder SVG while leaving the file manager executable unchanged.
+            (folder/'thunar.desktop').write_text(
+                '[Desktop Entry]\\nType=Application\\nName=Files\\nExec=thunar\\n'
+                'Icon=' + str(ICONS[number]) + '\\nTerminal=false\\n',
+                encoding='utf8',
+            )
+        elif ensure_launcher_icon(source, ICONS[number]):
+            shutil.copy2(source, folder/labels[number])
+        else:
+            raise RuntimeError('ParentPilot child shortcut missing: ' + labels[number])
 
 
 
