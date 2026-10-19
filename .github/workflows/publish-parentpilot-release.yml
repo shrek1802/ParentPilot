@@ -1,0 +1,100 @@
+name: Publish ParentPilot release
+
+# Publish only when a maintainer deliberately pushes a version tag.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Verify private signing secrets are configured
+        env:
+          KEYSTORE_B64: ${{ secrets.PARENTPILOT_SIGNING_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PARENTPILOT_SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PARENTPILOT_SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PARENTPILOT_SIGNING_KEY_PASSWORD }}
+          EXPECTED_CERT: ${{ secrets.PARENTPILOT_ANDROID_EXPECTED_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] ||
+             [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ] ||
+             [ -z "$EXPECTED_CERT" ]; then
+            echo "::error::Permanent signing key and certificate secrets required before publishing."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/parentpilot-release.jks"
+          chmod 600 "$RUNNER_TEMP/parentpilot-release.jks"
+          test -s "$RUNNER_TEMP/parentpilot-release.jks"
+      - name: Confirm tag matches Linux package version
+        run: |
+          set -euo pipefail
+          ver="$(sed -n 's/^VERSION=//p' packaging/build-deb.sh | head -1)"
+          want="v$(printf '%s' "$ver" | tr '~' '-')"
+          test "$GITHUB_REF_NAME" = "$want"
+      - name: Install test and SDK requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-tk
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Test Linux updater and timer service
+        run: |
+          python3 packaging/test_updates.py
+          python3 packaging/test_installer.py
+          python3 packaging/test_compatibility.py
+          python3 -m compileall -q desktop packaging/parentpilot
+          (cd desktop && python3 test_server.py)
+      - name: Build Linux release package
+        run: bash packaging/build-deb.sh "$GITHUB_WORKSPACE/dist"
+      - name: Build signed Android release package
+        env:
+          PARENTPILOT_SIGNING_STORE_PASSWORD: ${{ secrets.PARENTPILOT_SIGNING_STORE_PASSWORD }}
+          PARENTPILOT_SIGNING_KEY_ALIAS: ${{ secrets.PARENTPILOT_SIGNING_KEY_ALIAS }}
+          PARENTPILOT_SIGNING_KEY_PASSWORD: ${{ secrets.PARENTPILOT_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export PARENTPILOT_SIGNING_STORE="$RUNNER_TEMP/parentpilot-release.jks"
+          gradle --no-daemon -p android-app :app:assembleRelease
+          apk="android-app/app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          code="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)"
+          test -n "$code"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/apk-certificate.txt"
+          mv "$apk" "dist/ParentPilot-Android-v$code.apk"
+      - name: Verify signer matches permanent release identity
+        env:
+          EXPECTED_CERT: ${{ secrets.PARENTPILOT_ANDROID_EXPECTED_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-certificate.txt" | head -1)"
+          got="$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          want="$(printf '%s' "$EXPECTED_CERT" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test -n "$got"
+          test "$got" = "$want"
+      - name: Publish official GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::Refusing to overwrite existing published release."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" == *-preview* || "$GITHUB_REF_NAME" == *-rc* ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/*.deb dist/*.apk --prerelease --generate-notes --verify-tag
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.deb dist/*.apk --generate-notes --verify-tag
+          fi
