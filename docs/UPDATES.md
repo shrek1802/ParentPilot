@@ -1,6 +1,6 @@
 # ParentPilot updates — Android and Linux
 
-ParentPilot's automatic **update notifications and parent-approved installers** are introduced in the Preview 7 Linux DEB and Android v0.4.2 (version code 7).
+ParentPilot's automatic **update notifications and parent-approved installers** are introduced in the Preview 8 Linux DEB and Android v0.4.2 (version code 7).
 
 **Development status:** the updater logic has automated build and security tests, but end-to-end release installation on a physical XFCE laptop and Android phone must be tested before this is offered as a public stable product.
 
@@ -14,7 +14,7 @@ Children do not get update controls. The updater checks for a child desktop sess
 
 ## Linux upgrade safeguards
 
-The Linux updater is **only supported on a laptop newly configured with the Preview 7 (or newer) DEB setup wizard**. The first-run wizard writes a root-owned \`.parentpilot-deb-managed\` marker only after successful setup. Earlier hand-customised installations do not have the marker and are deliberately refused.
+The Linux updater is **only supported on a laptop newly configured with the Preview 8 (or newer) DEB setup wizard**. The first-run wizard writes a root-owned \`.parentpilot-deb-managed\` marker only after successful setup. Earlier hand-customised installations do not have the marker and are deliberately refused.
 
 The privileged upgrade helper:
 1. Re-checks the official GitHub Releases API as root and refuses temporary GitHub Actions artifacts.
@@ -28,20 +28,20 @@ The privileged upgrade helper:
 
 ## Stable and preview release channels
 
-Both apps default to **Stable**. A parent can deliberately switch to **Preview** in the Linux update window or the Android app's **More → Software updates**. Preview builds are for testing only.
+Android currently checks **Stable** releases only. The Linux administrator can deliberately switch between **Stable** and **Preview** in ParentPilot Updates. Debug Android preview APKs are not automatically installable upgrades because their signing certificate changes between CI builds.
 
 Both updaters read **published GitHub Releases** with appropriately named assets:
 
 | Platform | Expected asset | Other requirements |
 | --- | --- | --- |
 | Android | \`ParentPilot-Android-v7.apk\` (versionCode increases every release) | Same installed package ID and permanent APK signer; published SHA-256 digest |
-| Linux | \`parentpilot_0.5.0~preview7_all.deb\` (example) | Debian version newer than installed; published SHA-256 digest; newly managed installation marker |
+| Linux | \`parentpilot_0.5.0~preview8_all.deb\` (example) | Debian version newer than installed; published SHA-256 digest; newly managed installation marker |
 
-CI Artifacts are **not releases** and expire, so they do not trigger an update notice. There are currently no automated user-facing update notifications until a qualifying release has been published.
+CI Artifacts are **not releases** and expire, so they do not trigger an update notice. Notifications require a qualifying published release with a valid asset name, SHA-256 digest and newer version. GitHub release asset names normalise the Debian tilde to a dot (for example `parentpilot_0.5.0.preview8_all.deb`), while the internal Debian package version stays `0.5.0~preview8`.
 
 ## Maintainer release publishing
 
-Repository: \`shrek1802/ParentPilot\`. A gated [GitHub Actions release workflow](../.github/workflows/publish-parentpilot-release.yml) runs when a maintainer deliberately pushes a tag such as \`v0.5.0-preview7\`. It requires all five private secrets **before publishing anything**:
+Repository: \`shrek1802/ParentPilot\`. A gated [GitHub Actions release workflow](../.github/workflows/publish-parentpilot-release.yml) runs when a maintainer deliberately pushes a tag such as \`v0.5.0-preview8\`. It requires all five private secrets **before publishing anything**:
 
 - \`PARENTPILOT_SIGNING_KEYSTORE_B64\`: base64-encoded permanent private Android JKS keystore
 - \`PARENTPILOT_SIGNING_STORE_PASSWORD\`
