@@ -1,0 +1,133 @@
+#!/usr/bin/python3
+"""Offline regressions for optional ParentPilot games, no APT changes or users."""
+
+from pathlib import Path
+import importlib.util
+import sys
+from types import SimpleNamespace
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / 'parentpilot'))
+import games_catalog as catalog
+import games_install as installer
+
+expected = {
+    'gcompris': 'gcompris-qt',
+    'tuxmath': 'tuxmath',
+    'tuxtype': 'tuxtype',
+    'tuxpaint': 'tuxpaint',
+    'pingus': 'pingus',
+    'supertux': 'supertux',
+    'frozenbubble': 'frozen-bubble',
+    'sudoku': 'gnome-sudoku',
+}
+assert dict((key, package) for key, _title, _category, _desc, package
+            in catalog.GAMES) == expected
+assert catalog.validate_game_ids([]) == ()
+assert catalog.validate_game_ids(['tuxtype', 'supertux']) == ('tuxtype', 'supertux')
+assert catalog.package_names(['tuxtype', 'supertux']) == ('tuxtype', 'supertux')
+for invalid in (
+    'tuxmath', None, {'tuxmath': True}, ['not-a-package'],
+    ['tuxmath', 'tuxmath'], ['supertux;rm -rf /'], ['--force-yes'],
+    [[1]], [123], [True], list(expected) + ['x'],
+):
+    try:
+        catalog.validate_game_ids(invalid)
+        raise AssertionError('Accepted invalid selected games: ' + repr(invalid))
+    except ValueError:
+        pass
+
+setup_path = ROOT / 'parentpilot/setup_root.py'
+spec = importlib.util.spec_from_file_location('parentpilot_setup_for_games', setup_path)
+setup = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(setup)
+form = {
+    'child_name': 'Tester', 'child_user': 'kidtest', 'child_password': 'abcdef',
+    'parent_pin': '827391', 'youtube': 'kids', 'netflix': True,
+    'autologin': False, 'family_filter': True, 'screen_view': False,
+}
+assert setup.validate(form)[1] == 'kidtest' # Backward compatibility, no games field.
+assert setup.validate({**form, 'games': ['gcompris', 'supertux']})[1] == 'kidtest'
+for invalid in (['invalid'], ['tuxpaint', 'tuxpaint'], False, 'supertux', None):
+    try:
+        setup.validate({**form, 'games': invalid})
+        raise AssertionError('Unsafe setup games input accepted: ' + repr(invalid))
+    except ValueError:
+        pass
+
+installed_packages = {'tuxmath'}
+commands = []
+
+
+def fake_runner(argv, **kwargs):
+    commands.append(argv)
+    if argv[0] == 'dpkg-query':
+        pkg = argv[-1]
+        if pkg in installed_packages:
+            return SimpleNamespace(returncode=0, stdout='install ok installed')
+        return SimpleNamespace(returncode=1, stdout='')
+    if argv[0] == '/usr/bin/apt-get':
+        assert argv[:4] == [
+            '/usr/bin/apt-get', 'install', '-y', '--no-install-recommends',
+        ]
+        assert argv[-1] in expected.values()
+        assert kwargs.get('env', {}).get('DEBIAN_FRONTEND') == 'noninteractive'
+        if argv[-1] == 'frozen-bubble':
+            return SimpleNamespace(returncode=100, stderr='Package unavailable', stdout='')
+        return SimpleNamespace(returncode=0, stdout='Installed', stderr='')
+    raise AssertionError('Unexpected command: ' + repr(argv))
+
+
+done, existing, failed = installer.install_selected(
+    ['tuxmath', 'supertux', 'frozenbubble'], runner=fake_runner
+)
+assert done == ['SuperTux']
+assert existing == ['Tux Maths']
+assert failed == [('Frozen Bubble', 'Package unavailable')]
+assert [argv[-1] for argv in commands if argv[0] == '/usr/bin/apt-get'] == [
+    'supertux', 'frozen-bubble'
+]
+assert all('remove' not in cmd and 'purge' not in cmd for cmd in commands)
+assert installer.install_selected([], runner=fake_runner) == ([], [], [])
+
+# Root backend authorisation checks use the PolicyKit caller, never an
+# arbitrary request as coming from the child or a random shell.
+with patch.object(installer.pwd, 'getpwuid',
+                  return_value=SimpleNamespace(pw_name='adult', pw_gid=1000)), \
+     patch.object(installer.os, 'getgrouplist', return_value=[1000, 27]), \
+     patch.object(installer.grp, 'getgrgid',
+                  side_effect=lambda gid: SimpleNamespace(
+                      gr_name='sudo' if gid == 27 else 'adult')):
+    assert installer.validate_adult_origin({'PKEXEC_UID': '1000'}) == 'adult'
+
+for env in ({}, {'PKEXEC_UID': 'root'}, {'PKEXEC_UID': '0'}):
+    try:
+        installer.validate_adult_origin(env)
+        raise AssertionError('Accepted unauthenticated/invalid caller ' + repr(env))
+    except RuntimeError:
+        pass
+
+with patch.object(installer.pwd, 'getpwuid',
+                  return_value=SimpleNamespace(pw_name='child', pw_gid=1002)), \
+     patch.object(installer.os, 'getgrouplist', return_value=[1002]), \
+     patch.object(installer.grp, 'getgrgid',
+                  return_value=SimpleNamespace(gr_name='child')):
+    try:
+        installer.validate_adult_origin({'PKEXEC_UID': '1002'})
+        raise AssertionError('Child account passed administrator check')
+    except RuntimeError:
+        pass
+
+# Check the two screens reference the exact same game catalogue and both
+# use distinct administrator-controlled installation workflows.
+wizard_text = (ROOT / 'parentpilot/wizard.py').read_text()
+manager_text = (ROOT / 'parentpilot/games_gui.py').read_text()
+assert 'from games_catalog import GAMES' in wizard_text
+assert 'for game_id, title, category, description, package in GAMES' in wizard_text
+assert "data['games'] = " in wizard_text
+assert "'--from-manager'" in manager_text
+assert 'from games_catalog import GAMES' in manager_text
+
+print('PASS: 8 educational/2D games, only selected APT packages, setup validation, '
+      'partial failure, no removals, and adult-only installation')
