@@ -1,4 +1,4 @@
-name: Publish verified ParentPilot Preview 7
+name: Publish verified ParentPilot Preview 8
 
 # One-time release of the already-built, green GitHub Actions preview artifacts.
 # Intentionally tied to this filename and branch to avoid publishing old builds
@@ -8,7 +8,7 @@ on:
     branches:
       - feature/preview3-setup-screen-consent
     paths:
-      - .github/workflows/publish-verified-preview7.yml
+      - .github/workflows/publish-verified-preview8.yml
   workflow_dispatch:
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for run in 39293970843 39293955192; do
+          for run in 39296326300 39293955192; do
             result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.conclusion')"
             state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.status')"
             if [ "$state" != "completed" ] || [ "$result" != "success" ]; then
@@ -39,16 +39,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output/linux output/android
-          gh run download 39293970843 --repo "$GITHUB_REPOSITORY" --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview6 --dir output/linux
+          gh run download 39296326300 --repo "$GITHUB_REPOSITORY" --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview8 --dir output/linux
           gh run download 39293955192 --repo "$GITHUB_REPOSITORY" --name ParentPilot-Android-Updater-Debug-APK --dir output/android
-          test -s 'output/linux/parentpilot_0.5.0~preview7_all.deb'
+          test -s 'output/linux/parentpilot_0.5.0~preview8_all.deb'
           test -s output/android/app-debug.apk
       - name: Verify package identity and version
         run: |
           set -euo pipefail
-          deb='output/linux/parentpilot_0.5.0~preview7_all.deb'
+          deb='output/linux/parentpilot_0.5.0~preview8_all.deb'
           test "$(dpkg-deb -f "$deb" Package)" = parentpilot
-          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview7'
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview8'
           test "$(dpkg-deb -f "$deb" Architecture)" = all
           dpkg-deb -c "$deb" | grep -F '/usr/bin/parentpilot-updates'
           dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/update_install.py'
@@ -65,15 +65,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p publish
-          cp 'output/linux/parentpilot_0.5.0~preview7_all.deb' publish/
+          cp 'output/linux/parentpilot_0.5.0~preview8_all.deb' publish/
           cp output/android/app-debug.apk publish/ParentPilot-Android-v7-DEBUG.apk
           (cd publish && sha256sum *.deb *.apk > SHA256SUMS.txt)
           cat > "$RUNNER_TEMP/release-notes.txt" <<'EOF'
-          ## ParentPilot Preview 7 — family test build
+          ## ParentPilot Preview 8 — family test build
 
-          **This is a development preview, not a stable child-safety release.**
+          **This is a development preview, not a stable child-safety release.** Preview 8 fixes GitHub Releases asset-filename normalisation in the Linux updater. Use this instead of superseded Preview 7 for new installations.
 
-          **Linux:** Install parentpilot_0.5.0~preview7_all.deb on a fresh Linux Mint XFCE/X11 laptop. The adult Family Setup wizard creates a separate non-administrator child account, custom panel with Chromium, YouTube Kids/supervised YouTube, optional Netflix and Files, and the parent-controlled timer. Select filtering during setup if wanted. The new ParentPilot Updates utility is in the adult applications menu and checks official GitHub Releases. Existing configurations, PINs, and screen pictures are never intentionally reset by its update process. It makes a backup first, requires administrative approval and the child to be logged out. The updater is unverified on physical deployments and blocks unmarked legacy installs.
+          **Linux:** Install parentpilot_0.5.0~preview8_all.deb on a fresh Linux Mint XFCE/X11 laptop. The adult Family Setup wizard creates a separate non-administrator child account, custom panel with Chromium, YouTube Kids/supervised YouTube, optional Netflix and Files, and the parent-controlled timer. Select filtering during setup if wanted. The new ParentPilot Updates utility is in the adult applications menu and checks official GitHub Releases. Existing configurations, PINs, and screen pictures are never intentionally reset by its update process. It makes a backup first, requires administrative approval and the child to be logged out. The updater is unverified on physical deployments and blocks unmarked legacy installs.
 
           **Android:** ParentPilot-Android-v7-DEBUG.apk is the latest native dashboard test APK: timer controls, pause/resume, screenshots, saved gallery and an update checker in Settings. It retains the uk.familycontrol.remote package ID. However **GitHub Actions debug signing is NOT persistent**, so this APK may NOT install over previous Android builds. It is labelled DEBUG and is intentionally not offered as a normal in-app upgrade. A permanent release signing key still needs to be configured for future normal in-place updates.
 
@@ -86,16 +86,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.5.0-preview7 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if gh release view v0.5.0-preview8 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::The preview release tag already exists. Not overwriting binaries."
             exit 1
           fi
-          gh release create v0.5.0-preview7 \
+          gh release create v0.5.0-preview8 \
             publish/*.deb publish/*.apk publish/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "ParentPilot Preview 7 — Linux + Android" \
+            --title "ParentPilot Preview 8 — Linux + Android" \
             --notes-file "$RUNNER_TEMP/release-notes.txt" \
             --prerelease
-          gh release view v0.5.0-preview7 --repo "$GITHUB_REPOSITORY" \
+          gh release view v0.5.0-preview8 --repo "$GITHUB_REPOSITORY" \
             --json url,isPrerelease,assets --jq '{url: .url, prerelease: .isPrerelease, assets: [.assets[].name]}'
