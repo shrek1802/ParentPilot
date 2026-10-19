@@ -116,6 +116,41 @@ class ParentPilotClient(val origin: String, private val localPin: String?) {
     }
 
     fun state(): ParentState {
+        // Preview 6+ uses a typed JSON endpoint. For already-installed ParentPilot
+        // laptop services, continue using the compatible HTML form API fallback.
+        val jsonReply = fetch("/api/parent/v1/status")
+        if (jsonReply.code == 200) {
+            val info = JSONObject(jsonReply.text())
+            csrf = info.getString("csrf")
+            val seconds = info.optInt("remaining_seconds", 0)
+            val mode = when {
+                info.optBoolean("unlimited") -> "Unlimited"
+                info.optBoolean("paused") -> "Paused"
+                !info.optBoolean("allowed") -> "Time expired"
+                else -> "Available"
+            }
+            val list = info.optJSONArray("saved_pictures")
+            val photos = mutableListOf<SavedPicture>()
+            if (list != null) {
+                for (i in 0 until list.length()) {
+                    val photo = list.optJSONObject(i) ?: continue
+                    val id = photo.optString("id")
+                    if (validPicture(id)) photos.add(SavedPicture(id, photo.optString("time", "Saved picture")))
+                }
+            }
+            val enabled = info.optBoolean("screen_enabled")
+            return ParentState(
+                info.optString("display_name", "Child"), mode,
+                if (info.optBoolean("unlimited")) "Unlimited today" else formatTime(seconds),
+                formatTime(info.optInt("used_seconds", 0)),
+                if (info.optBoolean("max_active")) "Child is using the laptop" else "Child is not at the laptop",
+                enabled,
+                if (enabled) info.optString("screen_status", "idle") else "disabled",
+                photos
+            )
+        }
+        if (jsonReply.code == 403) throw IllegalStateException("Parent session expired.")
+        if (jsonReply.code != 404) throw IllegalStateException("Could not read parent status.")
         val response = fetch("/")
         if (response.code != 200) throw IllegalStateException("Unable to read controls.")
         val html = response.text()
@@ -199,6 +234,14 @@ class ParentPilotClient(val origin: String, private val localPin: String?) {
     }
 
     companion object {
+        private fun formatTime(seconds: Int): String {
+            val safe = seconds.coerceAtLeast(0)
+            if (safe <= 60) return (safe / 60).toString() + ":" + (safe % 60).toString().padStart(2, '0')
+            val minutes = (safe + 59) / 60
+            return if (minutes >= 60) (minutes / 60).toString() + "h " +
+                (minutes % 60).toString().padStart(2, '0') + "m" else minutes.toString() + " min"
+        }
+
         private fun validPicture(id: String) =
             Regex("""[0-9]{8}T[0-9]{6}Z-[a-f0-9]{20}[.]jpg""").matches(id)
 
