@@ -40,11 +40,12 @@ jobs:
           test "$(dpkg-deb -f "$deb" Package)" = parentpilot
           test "$(dpkg-deb -f "$deb" Version)" = "0.5.0~preview13"
           test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/parentpilot-package-files.txt"
           for name in child_panel.py update_install.py updates_gui.py; do
-            dpkg-deb -c "$deb" | grep -F -q "/usr/lib/parentpilot/$name"
+            grep -F -q "/usr/lib/parentpilot/$name" "$RUNNER_TEMP/parentpilot-package-files.txt"
           done
           for name in browser.svg files.svg youtube.svg netflix.svg; do
-            dpkg-deb -c "$deb" | grep -F -q "/usr/lib/parentpilot/icons/$name"
+            grep -F -q "/usr/lib/parentpilot/icons/$name" "$RUNNER_TEMP/parentpilot-package-files.txt"
           done
           cp "$deb" publish/parentpilot_0.5.0.preview13_all.deb
           (cd publish && sha256sum *.deb > SHA256SUMS.txt)
