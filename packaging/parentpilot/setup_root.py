@@ -272,6 +272,12 @@ WantedBy=multi-user.target
     if autologin:
         directory=Path('/etc/lightdm/lightdm.conf.d');directory.mkdir(parents=True,exist_ok=True)
         (directory/'99-parentpilot-autologin.conf').write_text(f'[Seat:*]\nautologin-user={user}\nautologin-user-timeout=0\nautologin-session=xfce\n',encoding='utf8')
+    # A marker is created ONLY after the new DEB-controlled first-run setup
+    # succeeds. It prevents the updater from ever overwriting a customised
+    # or legacy ParentPilot laptop by accident.
+    marker=CFG/'.parentpilot-deb-managed'
+    marker.write_text('ParentPilot-DEB-managed-v1\n',encoding='ascii')
+    marker.chmod(0o600)
 
 
 def main():
