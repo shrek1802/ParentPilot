@@ -80,6 +80,19 @@ The optional [Android companion](../ANDROID_INSTALL.md) uses local network servi
 - Removing the DEB does **not** remove the child account, timer data or settings. A fully guided removal tool is still planned.
 - If provisioning fails midway, manual cleanup of a partially created child account or configuration may be required. This is one reason to evaluate the installer on a spare machine first.
 
+## Updates for the adult account
+
+**ParentPilot Updates** is available in the adult administrator's applications menu after installing the Preview 8 DEB. It also checks once at adult desktop login and displays a notification when a published release is available.
+
+1. Open **ParentPilot Updates** while signed in as an adult Linux administrator.
+2. Select **Stable** (recommended for later public releases) or **Preview** (test releases), then click **Check for updates**.
+3. Read the release notes and **sign the child out completely** before proceeding.
+4. Click **Install update**, approve the administrator password prompt, and wait for the installation and service check.
+5. The updater downloads only published GitHub Releases, checks the SHA-256 digest and package metadata, and saves a protected local backup of the existing program, PIN/configuration, timer data, saved screenshots, and service definition before upgrading.
+6. If the service cannot restart correctly, the updater attempts to restore the previous deployed program and backed-up data. A failed APT package operation may still require manual package-version repair; the GUI reports this clearly.
+
+**Do not use the first-run wizard as an update tool** or install arbitrary GitHub Actions artifacts over a working child machine. This upgrade system still requires physical-laptop testing. Upgrades are deliberately blocked when the child is signed in or the installation predates the managed-install marker.
+
 ## Build and test from source
 
 From the repository root, on a suitable development machine:
@@ -90,6 +103,7 @@ python3 desktop/test_lock_stability.py
 python3 desktop/test_supervisor_singleton.py
 python3 packaging/test_installer.py
 python3 packaging/test_compatibility.py
+python3 packaging/test_updates.py
 bash packaging/build-deb.sh
 ```
 
