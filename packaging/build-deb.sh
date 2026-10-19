@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview14
+VERSION=0.5.0~preview15
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -60,6 +60,26 @@ done
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
 install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
 install -m 0644 "$ROOT/packaging/parentpilot/child_panel.py" "$STAGING/usr/lib/parentpilot/child_panel.py"
+# Optional approved educational and lightweight 2D APT games.
+install -m 0644 "$ROOT/packaging/parentpilot/games_catalog.py" "$STAGING/usr/lib/parentpilot/games_catalog.py"
+install -m 0644 "$ROOT/packaging/parentpilot/games_gui.py" "$STAGING/usr/lib/parentpilot/games_gui.py"
+install -m 0755 "$ROOT/packaging/parentpilot/games_install.py" "$STAGING/usr/lib/parentpilot/games_install.py"
+cat > "$STAGING/usr/bin/parentpilot-games" <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/parentpilot/games_gui.py "$@"
+EOF
+chmod 0755 "$STAGING/usr/bin/parentpilot-games"
+cat > "$STAGING/usr/share/applications/parentpilot-games.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ParentPilot Games & Learning
+Comment=Choose free games for the family laptop
+Exec=parentpilot-games
+Icon=parentpilot
+Categories=Settings;Education;
+Terminal=false
+StartupNotify=true
+EOF
 # Parent-only updater: read-only version checks, privileged verified DEB upgrades.
 install -m 0644 "$ROOT/packaging/parentpilot/update_release.py" "$STAGING/usr/lib/parentpilot/update_release.py"
 install -m 0644 "$ROOT/packaging/parentpilot/updates_gui.py" "$STAGING/usr/lib/parentpilot/updates_gui.py"
