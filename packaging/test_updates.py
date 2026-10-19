@@ -99,14 +99,29 @@ with tempfile.TemporaryDirectory() as scratch:
     (upd.PACKAGE / 'control_server.py').write_text('new service')
     (upd.PACKAGE / 'parentpilot_screen_parent.js').write_text('new frontend')
     upd.UNIT.write_text('[Service]\nExecStart=old\n')
+    # A real fresh installation has a child account; emulate it entirely
+    # inside this temporary directory without touching system passwd.
+    fake_home = root / 'child-home'
+    panel_file = (fake_home /
+        '.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
+    panel_file.parent.mkdir(parents=True)
+    panel_file.write_text('<channel name="xfce4-panel"/>')
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    import os
+    original_entry = SimpleNamespace(pw_dir=str(fake_home),
+                                      pw_uid=os.getuid(), pw_gid=os.getgid())
     assert not upd.configured_for_updates()
     upd.MARKER.write_text('ParentPilot-DEB-managed-v1')
     assert upd.configured_for_updates()
     saved_version = upd.installed_version
     saved_command = upd.cmd
+    saved_pw_lookup = upd.pwd.getpwnam
     try:
+        upd.pwd.getpwnam = lambda name: original_entry
         upd.installed_version = lambda: '0.5.0~preview6'
         backup = upd.save_snapshot()
+        assert (backup / 'child-panel.xml').is_file()
         assert (backup / 'configuration' / 'server.key').read_text() == 'private-certificate-key'
         assert (backup / 'data' / 'saved-screens' / 'proof.jpg').is_file()
         assert (backup / 'version.txt').read_text().strip() == '0.5.0~preview6'
@@ -116,15 +131,18 @@ with tempfile.TemporaryDirectory() as scratch:
         assert (upd.TARGET / 'old-extra-file.txt').read_text() == 'keep'
         (upd.DATA / 'state.json').write_text('corrupted')
         (upd.CFG / 'config.json').write_text('{}')
+        panel_file.write_text('<channel name="broken"/>')
         upd.cmd = lambda *args, **kwargs: types.SimpleNamespace(stdout='')
         upd.restore_snapshot(backup)
         assert (upd.CFG / 'config.json').read_text() == '{"child":"testchild","password":"protected"}'
         assert (upd.DATA / 'state.json').read_text() == '{"allowance_seconds":1800}'
         assert (upd.DATA / 'saved-screens' / 'proof.jpg').exists()
         assert (upd.TARGET / 'control_server.py').read_text() == 'old service'
+        assert panel_file.read_text() == '<channel name="xfce4-panel"/>'
     finally:
         upd.cmd = saved_command
         upd.installed_version = saved_version
+        upd.pwd.getpwnam = saved_pw_lookup
 print('PASS: fresh-install marker, private PIN/token/screen backups, deployed copy and recovery')
 
 print('PASS: ParentPilot update system security regression tests')
