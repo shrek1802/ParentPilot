@@ -137,8 +137,8 @@ def write_child_panel(home, group, youtube=True, netflix=True):
             # The stock Thunar icon name depends on the theme: use a stable
             # folder SVG while leaving the file manager executable unchanged.
             (folder/'thunar.desktop').write_text(
-                '[Desktop Entry]\nType=Application\nName=Files\nExec=thunar\n'
-                'Icon=' + str(ICONS[number]) + '\nTerminal=false\n',
+                '[Desktop Entry]\\nType=Application\\nName=Files\\nExec=thunar\\n'
+                'Icon=' + str(ICONS[number]) + '\\nTerminal=false\\n',
                 encoding='utf8',
             )
         elif ensure_launcher_icon(source, ICONS[number]):
