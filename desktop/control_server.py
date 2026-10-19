@@ -568,6 +568,19 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 self.send_bytes('Viewer unavailable', 404)
             return
+        if self.path == '/api/parent/v1/status':
+            # Stable native-Android endpoint. The desktop's local token is NEVER
+            # sufficient to access the parent dashboard: require signed-in parent.
+            session = self.get_session()
+            if not session:
+                self.send_bytes('Forbidden', 403); return
+            summary = self.ctl.snapshot()
+            summary['csrf'] = session[1][1]
+            summary['saved_pictures'] = (
+                self.ctl.saved_pictures() if summary.get('screen_enabled') else []
+            )
+            self.send_bytes(json.dumps(summary), content_type='application/json')
+            return
         if self.path == '/api/parent-screen':
             if not self.get_session():
                 self.send_bytes('Forbidden', 403); return
