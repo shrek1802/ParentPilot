@@ -93,9 +93,9 @@ object ParentPilotUpdates {
      * Latest stable Android APK asset must use:
      * ParentPilot-Android-v<versionCode>.apk
      * GitHub supplies SHA-256 digest in release asset metadata.
-     * Preview channels are excluded from normal parent updates.
+     * Preview releases are offered only when a parent deliberately opts in.
      */
-    fun check(context: Context): ParentPilotUpdate? {
+    fun check(context: Context, includePreviews: Boolean = false): ParentPilotUpdate? {
         val current = currentVersion(context)
         val conn = openTrusted(API)
         val text = try {
@@ -105,7 +105,7 @@ object ParentPilotUpdates {
         var best: ParentPilotUpdate? = null
         for (i in 0 until releases.length()) {
             val release = releases.optJSONObject(i) ?: continue
-            if (release.optBoolean("draft") || release.optBoolean("prerelease")) continue
+            if (release.optBoolean("draft") || (!includePreviews && release.optBoolean("prerelease"))) continue
             val tag = release.optString("tag_name", "").take(80)
             val notes = release.optString("body", "").take(2800)
             val assets = release.optJSONArray("assets") ?: continue
