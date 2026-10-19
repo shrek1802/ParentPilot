@@ -33,6 +33,7 @@ data class ParentState(
 class ParentPilotClient(val origin: String, private val localPin: String?) {
     private var sessionCookie: String? = null
     private var csrf: String? = null
+    private var supportsNativeJson: Boolean? = null
 
     private val pinnedFactory by lazy {
         val fingerprint = requireNotNull(localPin) { "Verify laptop certificate before connecting." }
@@ -118,8 +119,9 @@ class ParentPilotClient(val origin: String, private val localPin: String?) {
     fun state(): ParentState {
         // Preview 6+ uses a typed JSON endpoint. For already-installed ParentPilot
         // laptop services, continue using the compatible HTML form API fallback.
-        val jsonReply = fetch("/api/parent/v1/status")
-        if (jsonReply.code == 200) {
+        val jsonReply = if (supportsNativeJson != false) fetch("/api/parent/v1/status") else null
+        if (jsonReply?.code == 200) {
+            supportsNativeJson = true
             val info = JSONObject(jsonReply.text())
             csrf = info.getString("csrf")
             val seconds = info.optInt("remaining_seconds", 0)
@@ -149,8 +151,11 @@ class ParentPilotClient(val origin: String, private val localPin: String?) {
                 photos
             )
         }
-        if (jsonReply.code == 403) throw IllegalStateException("Parent session expired.")
-        if (jsonReply.code != 404) throw IllegalStateException("Could not read parent status.")
+        if (jsonReply?.code == 403) throw IllegalStateException("Parent session expired.")
+        if (jsonReply != null && jsonReply.code != 404) {
+            throw IllegalStateException("Could not read parent status.")
+        }
+        supportsNativeJson = false
         val response = fetch("/")
         if (response.code != 200) throw IllegalStateException("Unable to read controls.")
         val html = response.text()
