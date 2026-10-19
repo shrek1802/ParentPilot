@@ -62,7 +62,7 @@ jobs:
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
-          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview6
+          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview8
           path: dist/*.deb
           if-no-files-found: error
           retention-days: 30
