@@ -49,20 +49,77 @@ def configured_for_updates():
             and UNIT.is_file())
 
 
-def child_signed_in():
-    # Updating executable lock code during an active child session is unsafe.
+def child_session_block_reason():
+    """Protect active child XFCE sessions, but ignore fully closing stale logind records.
+
+    XFCE's Switch user leaves the child session online even if it is not the
+    currently visible session; that's NOT a logout. Conversely, systemd-logind
+    can report a transient State=closing session after a proper logout.
+    Only ignore the latter after independently checking no child XFCE UI/lock
+    process remains. Unknown status must fail closed.
+    """
     try:
         child = json.loads((CFG / 'config.json').read_text())['child']
+        if not isinstance(child, str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,30}', child):
+            raise ValueError('Invalid child account in configuration.')
         session_output = cmd('loginctl', 'list-sessions', '--no-legend', timeout=6).stdout
+        sessions = []
         for line in session_output.splitlines():
             columns = line.split()
-            if len(columns) >= 3 and columns[2] == child:
-                return True
-    except (OSError, KeyError, ValueError, subprocess.CalledProcessError,
-            subprocess.TimeoutExpired):
-        # Unknown session state: conservative; require parent intervention.
-        return True
-    return False
+            if len(columns) < 3:
+                raise ValueError('Unexpected loginctl session listing.')
+            if columns[2] == child:
+                session_id = columns[0]
+                if not re.fullmatch(r'[a-zA-Z0-9]{1,24}', session_id):
+                    raise ValueError('Unexpected loginctl session identifier.')
+                sessions.append(session_id)
+        if not sessions:
+            return None
+
+        for session_id in sessions:
+            result = cmd('loginctl', 'show-session', session_id,
+                         '-p', 'Name', '-p', 'State', '-p', 'Active',
+                         '-p', 'Type', timeout=6).stdout
+            details = dict(
+                line.split('=', 1) for line in result.splitlines() if '=' in line
+            )
+            if details.get('Name') != child:
+                raise ValueError('Unexpected session owner.')
+            state = details.get('State', '').lower()
+            active = details.get('Active', '').lower()
+            if state == 'closing' and active == 'no':
+                # Some XFCE child sessions take time to clean up; do not
+                # restart the lock while a graphical process still exists.
+                ps = subprocess.run(
+                    ['ps', '-u', child, '-o', 'args='],
+                    capture_output=True, text=True, timeout=6, check=False)
+                if ps.returncode not in (0, 1):
+                    raise RuntimeError('Cannot inspect child processes.')
+                if any(part in ps.stdout for part in (
+                        'xfce4-session', 'xfce4-panel', 'xfwm4',
+                        '/max_desktop.py', '/max_desktop_supervisor.py')):
+                    return ('Child session ' + session_id +
+                            ' is still shutting down with a running desktop. '
+                            'Wait a moment and try again.')
+                continue
+            if state not in ('active', 'online', 'closing') or active not in ('yes', 'no'):
+                raise ValueError('Unknown loginctl session state.')
+            return ('Child Linux session ' + session_id + ' is still ' + state +
+                    ' (active=' + active + '). Switching users does not log '
+                    'the child out. From the adult account, use '
+                    '"sudo loginctl terminate-user ' + child + '" after saving '
+                    "the child's open work, then retry.")
+        return None
+    except (OSError, KeyError, ValueError, RuntimeError,
+            subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        return ('Cannot safely confirm that the child is logged out (' +
+                type(exc).__name__ + '). From the adult account, check '
+                '"loginctl list-sessions" and try again.')
+
+
+def child_signed_in():
+    """Compatibility wrapper for existing clients; fail closed on uncertainty."""
+    return child_session_block_reason() is not None
 
 
 def save_snapshot():
@@ -206,10 +263,9 @@ def install(channel, expected_tag):
         raise RuntimeError(
             'This is not a fresh DEB-managed ParentPilot installation. '
             'Existing customised systems must not be updated automatically.')
-    if child_signed_in():
-        raise RuntimeError(
-            'The child is currently signed in. Sign the child out from XFCE '
-            'before updating so the active lock cannot be interrupted.')
+    block_reason = child_session_block_reason()
+    if block_reason:
+        raise RuntimeError(block_reason)
     current = installed_version()
     release = fetch_updates(channel, current)
     if not release or release['tag'] != expected_tag:
