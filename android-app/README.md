@@ -1,33 +1,47 @@
-# ParentPilot Android companion
+# ParentPilot — native Android parental controls
 
-The ParentPilot Android companion helps parents connect to a ParentPilot-controlled Linux laptop. It discovers devices on the **same Wi-Fi** using Android network service discovery, then opens the laptop's **PIN-protected HTTPS dashboard in the phone's browser**.
+ParentPilot Android is a **native Kotlin app** for controlling a ParentPilot Linux laptop. It uses Android screens and HTTPS requests directly; **it does not launch Chrome or embed a WebView**.
 
-**Current scope:** The Android app is a discovery and connection companion, not a fully native parental dashboard. It does not collect or store the parent PIN.
+## In-app features
 
-## Install a test build
+- Discover a laptop over the same Wi-Fi, connect by private IPv4 address, or use a trusted private Tailscale `.ts.net` address.
+- Sign in using the existing **six-digit parent PIN** (not saved on the phone).
+- View remaining/used screen time and child activity status.
+- Set or add minutes; pause, resume, end time, set unlimited time or return to managed time.
+- Request an individual screenshot (child-visible notification), view a picture in the app with pinch-to-zoom, and explicitly save the image to the laptop gallery.
+- View, download to the phone and delete up to 20 saved screenshots using the system Save picker.
 
-GitHub Actions produces a downloadable **debug APK** for testing:
+Screenshot viewing must already be enabled on the child laptop. Native mode uses the existing authenticated ParentPilot actions; **an existing working laptop does not need to be reinstalled**. Newer laptop services also provide a typed JSON status endpoint; the app automatically falls back to the existing browser-dashboard-compatible service for older installations.
 
-1. Open [Build ParentPilot Android APK](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml).
-2. Open a successful workflow run and download **ParentPilot-Android-debug-APK** under **Artifacts**.
-3. Extract the artifact ZIP, then install `app-debug.apk` on a test Android device.
+## One-time security check for local HTTPS
 
-This build is **not Play Store ready** or production-signed. A different debug signing key can prevent one test APK from installing over another.
+ParentPilot's local HTTPS certificate is self-signed. Before sending the PIN, the app shows its **SHA-256 certificate fingerprint**. On the Linux laptop, open an adult administrator terminal and compare it with:
 
-For complete installation, permissions and connection instructions, see [the Android setup guide](../ANDROID_INSTALL.md).
+```bash
+sudo openssl x509 -in /etc/max-family-control/server.crt -noout -fingerprint -sha256
+```
 
-## Connect to a laptop
+Only choose **I verified it matches** when the fingerprint is identical. The app then pins that specific certificate for that laptop address; an unexpected certificate change blocks future connections. Unlike a browser that allows a click-through warning, the native app does **not** silently disable HTTPS verification. Tailscale `.ts.net` addresses use Android's normal trusted HTTPS certificate verification.
 
-- **Same Wi-Fi:** select **Find nearby laptop**. Android discovery requires multicast/mDNS and client-to-client traffic; some guest networks and hotspots block it.
-- **Direct local connection:** enter the laptop's private IP address if automatic discovery fails.
-- **Different networks:** configure a **private VPN** such as Tailscale and use the laptop's private HTTPS hostname. Never publicly forward the parental control port.
+## Same application ID and installation updates
 
-The laptop may use a local, self-signed HTTPS certificate. Confirm that the device you are connecting to is yours before trusting a browser warning. The app uses the system browser for HTTPS and PIN entry.
+**Package name stays `uk.familycontrol.remote`.** Version code is increased to 5 (`0.4.0-native-preview`).
 
-## Build from source
+An Android APK can update an installed APK **only when both the application ID and signing certificate match**. Older GitHub Actions debug builds used ephemeral signing keys, so an APK from a different run may fail to install over them despite having the same ID. The original signing private key cannot be recovered from an installed APK.
 
-The app is written in **Kotlin** with Android's `NsdManager`. Open `android-app/` in Android Studio with a compatible Android SDK/JDK and Gradle toolchain. The [Android CI workflow](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml) defines the automated debug build.
+For **future consistent signed releases**, configure the following as private GitHub Actions repository secrets:
 
-## Development status
+- `PARENTPILOT_SIGNING_KEYSTORE_B64`: base64 of the **private** JKS keystore
+- `PARENTPILOT_SIGNING_STORE_PASSWORD`
+- `PARENTPILOT_SIGNING_KEY_ALIAS`
+- `PARENTPILOT_SIGNING_KEY_PASSWORD`
 
-Real-device testing across different Android releases, routers and Linux desktops is still needed. Release signing, authenticated device pairing and fully native parent controls have not been completed. Treat all APKs as **development previews**, and do not include family-identifying data in public bug reports.
+The Android build workflow then generates a separately labelled **ParentPilot-Android-Native-Signed-APK** using that same persistent key across versions. Keep the keystore and its passwords backed up securely outside GitHub. **Never commit, publish or send a private keystore in issues or chat.** If a pre-existing APK was signed with an unknown debug key, one uninstall/reinstall on the *Android phone* may be unavoidable before moving to a stable signing identity. This does **not** affect the child laptop or its timer/PIN/gallery. The phone's saved connection address may need re-entering.
+
+Without the signing secrets, GitHub uploads **ParentPilot-Android-Native-Debug-APK** for testing. Its signer is **not** guaranteed to match previous runs.
+
+## Build and limitations
+
+Use [Android GitHub Actions](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml) to build the app. It uses Gradle 8.9, Android SDK 35, Kotlin 2.0.21 and Java 17.
+
+This is a developer test build. Native functionality has compiled in CI, but **physical phone testing, security review, error handling across networks, and signing migration remain necessary**. It is not Play Store-ready.
