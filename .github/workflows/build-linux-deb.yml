@@ -52,23 +52,27 @@ jobs:
         run: bash packaging/build-deb.sh "$GITHUB_WORKSPACE/dist"
       - name: Inspect package and protect maintainer scripts
         run: |
-          test -s dist/parentpilot_0.5.0~preview11_all.deb
-          dpkg-deb --info dist/parentpilot_0.5.0~preview11_all.deb
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/lib/parentpilot/child_panel.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/share/icons/hicolor/128x128/apps/parentpilot.png'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/lib/parentpilot/desktop/screen_view.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/lib/parentpilot/desktop/parentpilot_screen_parent.js'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/bin/parentpilot-updates'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/lib/parentpilot/update_install.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/usr/share/applications/parentpilot-updates.desktop'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview11_all.deb | grep -F '/etc/xdg/autostart/parentpilot-update-check.desktop'
+          test -s dist/parentpilot_0.5.0~preview12_all.deb
+          dpkg-deb --info dist/parentpilot_0.5.0~preview12_all.deb
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/child_panel.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/icons/browser.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/icons/files.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/icons/youtube.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/icons/netflix.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/share/icons/hicolor/128x128/apps/parentpilot.png'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/desktop/screen_view.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/desktop/parentpilot_screen_parent.js'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/bin/parentpilot-updates'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/lib/parentpilot/update_install.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/usr/share/applications/parentpilot-updates.desktop'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview12_all.deb | grep -F '/etc/xdg/autostart/parentpilot-update-check.desktop'
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
-          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview11
+          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview12
           path: dist/*.deb
           if-no-files-found: error
           retention-days: 30
