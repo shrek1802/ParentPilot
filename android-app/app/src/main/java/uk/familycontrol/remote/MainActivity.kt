@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     private lateinit var nav: LinearLayout
     private var selectedTab = 0
     private var childStatus: TextView? = null
+    private var connectionBadge: TextView? = null
     private lateinit var container: LinearLayout
     private lateinit var scroll: ScrollView
     private val uiHandler = Handler(Looper.getMainLooper())
@@ -423,6 +424,7 @@ class MainActivity : Activity() {
         saveButton = null
         gallery = null
         childStatus = null
+        connectionBadge = null
         val heading = when (selectedTab) {
             1 -> "Manage time"
             2 -> "Screen viewer"
@@ -461,6 +463,7 @@ class MainActivity : Activity() {
             background = roundShape(Color.rgb(20, 65, 60), 30)
         }
         header.addView(online)
+        connectionBadge = online
         container.addView(View(this), LinearLayout.LayoutParams(1, 20.dp()))
     }
 
@@ -730,20 +733,46 @@ class MainActivity : Activity() {
 
     private fun applyState(info: ParentState) {
         if (client == null) return
+        val previous = state
         state = info
-        modeLabel?.text = info.child + ": " + info.mode
-        timerLabel?.text = "Time left: " + info.remaining
-        presenceLabel?.text = info.presence + " · Used today: " + info.used
+        // A change between paused and active changes the main action buttons.
+        // Rebuild only then, not every five-second poll (prevents page flicker).
+        if (selectedTab == 0 && previous != null && previous.mode != info.mode) {
+            renderTab(info)
+            return
+        }
+        val pill = childStatus
+        if (pill != null) {
+            val style = stateStyle(info.mode)
+            val updated = badge(info.mode, style)
+            pill.text = updated.text
+            pill.setTextColor(updated.currentTextColor)
+            pill.background = updated.background
+        }
+        timerLabel?.text = info.remaining
+        presenceLabel?.text = info.presence + "    ·    Used today " + info.used
+        connectionBadge?.text = "●  Linked"
+        connectionBadge?.setTextColor(green)
         screenStatus?.text = if (info.screenEnabled) "Picture status: " + info.screenStatus
-            else "Screen pictures are off. Enable them during the laptop's administrator setup."
+            else "Screen pictures are off. Enable them in laptop administrator setup."
         saveButton?.isEnabled = info.screenEnabled && info.screenStatus == "ready"
         if (info.screenStatus != "ready") {
             latestBytes = null
             preview?.visibility = View.GONE
-        } else if (latestBytes == null && previousScreenStatus != "ready") loadPreview()
+        } else if (latestBytes != null && preview != null) {
+            // Reattach a previously loaded picture when switching to Screen tab.
+            val bytes = latestBytes!!
+            val picture = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            if (picture != null) {
+                preview?.setImageBitmap(picture)
+                preview?.visibility = View.VISIBLE
+            }
+        } else if (latestBytes == null && previousScreenStatus != "ready" && preview != null) {
+            loadPreview()
+        }
         previousScreenStatus = info.screenStatus
         val galleryKey = info.pictures.joinToString("|") { it.id }
-        if (galleryKey != lastGalleryKey) {
+        if (gallery != null && galleryKey != lastGalleryKey) {
             lastGalleryKey = galleryKey
             renderGallery(info.pictures)
         }
@@ -771,63 +800,90 @@ class MainActivity : Activity() {
         val parent = gallery ?: return
         parent.removeAllViews()
         if (pictures.isEmpty()) {
-            parent.addView(text("No pictures saved yet.", 14f, muted))
+            val empty = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(16.dp(), 17.dp(), 16.dp(), 17.dp())
+                background = roundShape(elevated, 14)
+            }
+            empty.addView(text("▣  No saved pictures yet", 15f))
+            empty.addView(caption("Take a screen picture and tap Save to keep it here."))
+            parent.addView(empty)
             return
         }
         for ((index, pic) in pictures.withIndex()) {
-            val row = LinearLayout(this).apply {
+            val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, 8.dp(), 0, 12.dp())
+                setPadding(12.dp(), 13.dp(), 12.dp(), 13.dp())
+                background = roundShape(elevated, 15)
             }
-            row.addView(text(pic.time, 15f))
-            if (index < 6) {
-                val thumbnail = ImageView(this).apply {
-                    adjustViewBounds = true
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    contentDescription = "Tap to enlarge saved screenshot"
-                    setOnClickListener {
-                        val api = client ?: return@setOnClickListener
-                        backgroundImage({ api.jpeg(pic.id) }) { result ->
-                            result.onSuccess { openPictureViewer(it, pic.time) }
-                        }
+            parent.addView(item, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 10.dp() })
+            val heading = row(item)
+            val thumbnail = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = roundShape(Color.rgb(12, 24, 41), 9)
+                contentDescription = "View saved screen picture"
+                setOnClickListener {
+                    val api = client ?: return@setOnClickListener
+                    backgroundImage({ api.jpeg(pic.id) }) { result ->
+                        result.onSuccess { openPictureViewer(it, pic.time) }
+                            .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
                     }
                 }
-                row.addView(thumbnail, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 140.dp()
-                ))
+            }
+            heading.addView(thumbnail, LinearLayout.LayoutParams(95.dp(), 76.dp()).apply {
+                marginEnd = 13.dp()
+            })
+            val labels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            labels.addView(text(pic.time, 14f))
+            labels.addView(caption("Saved on laptop"))
+            heading.addView(labels, LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ))
+            // Load only a few preview thumbnails to keep the UI responsive.
+            if (index < 8) {
                 val api = client
                 if (api != null) backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { bytes ->
-                        if (client === api) {
+                        if (client === api && thumbnail.isAttachedToWindow) {
                             val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-                            val image = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                            if (image != null) thumbnail.setImageBitmap(image)
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let {
+                                thumbnail.setImageBitmap(it)
+                            }
                         }
                     }
                 }
             }
-            button(row, "View / zoom saved picture") {
-                val api = client ?: return@button
+            val actions = row(item)
+            quickButton(actions, "View", "outline") {
+                val api = client ?: return@quickButton
                 backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { openPictureViewer(it, pic.time) }
                         .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
                 }
             }
-            button(row, "Download picture to phone") {
-                val api = client ?: return@button
+            quickButton(actions, "Save to phone", "blue") {
+                val api = client ?: return@quickButton
                 backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { saveWithSystemPicker(it, pic.id) }
                         .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
                 }
             }
-            button(row, "Delete saved picture") {
-                AlertDialog.Builder(this).setTitle("Delete screenshot?")
-                    .setMessage("Permanently delete this saved screenshot from the laptop?")
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Delete") { _, _ -> performAction("delete-saved-screen", pictureId = pic.id) }
-                    .show()
+            val delete = text("Delete picture", 12f, red).apply {
+                gravity = Gravity.END
+                setPadding(5.dp(), 13.dp(), 5.dp(), 2.dp())
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Delete saved picture?")
+                        .setMessage("Permanently delete this picture from the laptop?")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Delete") { _, _ ->
+                            performAction("delete-saved-screen", pictureId = pic.id)
+                        }.show()
+                }
             }
-            parent.addView(row)
+            item.addView(delete)
         }
     }
 
@@ -847,7 +903,9 @@ class MainActivity : Activity() {
                 if (client === api && pollActive) {
                     result.onSuccess { applyState(it) }
                         .onFailure {
-                            screenStatus?.text = "Connection interrupted. Tap Refresh when the laptop is online."
+                            connectionBadge?.text = "●  Offline"
+                            connectionBadge?.setTextColor(red)
+                            screenStatus?.text = "Connection interrupted. Check Wi-Fi and try again."
                         }
                 }
             }
