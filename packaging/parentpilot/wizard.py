@@ -174,7 +174,7 @@ class Wizard:
         self.lbl(self.body,'Their Linux account will be separate from your administrator account.',11,SUB)
         self.entry(self.body,'Child’s name (shown on their screen)','child_name')
         self.entry(self.body,'Suggested child login name (you can change it)','child_user')
-        self.entry(self.body,'Child account password (at least 8 characters)','child_password',True)
+        self.entry(self.body,'Child account password (at least 6 characters)','child_password',True)
         self.entry(self.body,'Confirm the child account password','child_password2',True)
         self.lbl(self.body,'The child account will not have administrator privileges. This password is separate from your six-digit parent PIN.',10,SUB,pad=15)
 
@@ -220,8 +220,8 @@ class Wizard:
             username=self.v['child_user'].get().strip()
             if not re.fullmatch(r'[a-z][a-z0-9_-]{0,30}',username) or username in ('root','maxfamily','nobody'):
                 return 'Use a new lowercase Linux username (letters, numbers, hyphens).'
-            if not 8<=len(self.v['child_password'].get())<=128:
-                return 'The child password needs at least eight characters.'
+            if not 6<=len(self.v['child_password'].get())<=128:
+                return 'The child password needs at least six characters.'
             if self.v['child_password'].get()!=self.v['child_password2'].get():
                 return 'The child passwords do not match.'
         if self.step==2:
