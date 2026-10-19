@@ -10,6 +10,7 @@ from pathlib import Path
 import os
 import pwd
 import shutil
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
@@ -55,8 +56,10 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     labels={10:'parentpilot-browser.desktop',11:'thunar.desktop',12:'parentpilot-youtube.desktop',13:'parentpilot-netflix.desktop'}
     # Separator 18 and 19 expand equally; the tray and clock retain space
     # on the right while the child app shortcuts form an uncluttered dock.
-    prop(prop(plugins,'plugin-18','string','separator'),'expand','bool','true')
-    prop(prop(plugins,'plugin-19','string','separator'),'expand','bool','true')
+    for spacer_id in (18,19):
+        spacer = prop(plugins, f'plugin-{spacer_id}', 'string', 'separator')
+        prop(spacer, 'style', 'uint', 0)
+        prop(spacer, 'expand', 'bool', 'true')
     for number in launcher_ids:
         p=prop(plugins,f'plugin-{number}','string','launcher')
         array(p,'items','string',[labels[number]])
@@ -111,7 +114,94 @@ def repair_child_panel():
     print('Child ParentPilot panel updated; existing account settings preserved.')
 
 
+# XFCE saves its panel in xfconf, not just xfce4-panel.xml. A resident xfconfd
+# process can keep the previous left-aligned layout after a package upgrade,
+# or overwrite edited XML when the child next signs in. Apply layout once in
+# the CHILD's own graphical session, through xfconf-query, after XFCE starts.
+LAYOUT_REVISION = 'centre-shortcuts-v3'
+
+
+def xfconf_commands_for_panel(home):
+    """Pure commands for the known ParentPilot panel; never touch other users."""
+    home = Path(home)
+    if not existing_parentpilot_panel(home):
+        return []
+    xml_file = home / '.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml'
+    root = ET.parse(xml_file).getroot()
+    values = root.findall(".//property[@name='panel-1']/property[@name='plugin-ids']/value")
+    plugin_ids = [int(v.get('value')) for v in values]
+    # The only supported template: menu, equal expanding left/right spacers,
+    # curated app launchers, notification tray, and clock. Never mutate a
+    # generic XFCE panel or make guesses about plugin identifiers.
+    if (len(plugin_ids) < 7 or plugin_ids[:2] != [1, 18] or
+            19 not in plugin_ids or plugin_ids[-2:] != [21, 22]):
+        return []
+    if plugin_ids.index(19) <= 2:
+        return []
+    query = 'xfconf-query'
+    commands = []
+    for plugin_id in (18, 19):
+        commands.extend([
+            [query, '-c', 'xfce4-panel', '-p', f'/plugins/plugin-{plugin_id}',
+             '-n', '-t', 'string', '-s', 'separator'],
+            [query, '-c', 'xfce4-panel', '-p', f'/plugins/plugin-{plugin_id}/style',
+             '-n', '-t', 'uint', '-s', '0'],
+            [query, '-c', 'xfce4-panel', '-p', f'/plugins/plugin-{plugin_id}/expand',
+             '-n', '-t', 'bool', '-s', 'true'],
+        ])
+    # Reassert the plugin order after xfconf has recognised the separators.
+    args = [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/plugin-ids',
+            '-n', '-a']
+    for plugin_id in plugin_ids:
+        args.extend(['-t', 'int', '-s', str(plugin_id)])
+    commands.append(args)
+    return commands
+
+
+def apply_session_panel(home=None, runner=subprocess.run):
+    """Repair the live XFCE panel once per layout revision and child profile.
+
+    Called only by the managed CHILD session autostart, using that session's
+    DBus and xfconf. Never run as root, never restart the window manager, and
+    never overwrite administrator panels. A failing command does not leave
+    a success marker: the next login can retry.
+    """
+    if os.geteuid() == 0:
+        raise RuntimeError('Refusing to manage a root XFCE panel.')
+    user = pwd.getpwuid(os.getuid())
+    user_home = Path(home or user.pw_dir)
+    commands = xfconf_commands_for_panel(user_home)
+    if not commands:
+        print('SKIPPED: not a ParentPilot-managed child panel.')
+        return False
+    state = user_home / '.local/state/parentpilot'
+    marker = state / ('panel-' + LAYOUT_REVISION + '.done')
+    if marker.exists():
+        return True
+    if not shutil.which('xfconf-query'):
+        print('DEFERRED: xfconf-query not available yet.')
+        return False
+    # A real graphical session is required; avoid accidentally writing to a
+    # separate DBus service or another logged-in user's panel.
+    if not os.environ.get('DISPLAY') or not os.environ.get('DBUS_SESSION_BUS_ADDRESS'):
+        print('DEFERRED: XFCE session display or DBus is not ready.')
+        return False
+    for argv in commands:
+        result = runner(argv, capture_output=True, text=True, timeout=8, check=False)
+        if result.returncode != 0:
+            print('DEFERRED: XFCE rejected a panel setting. Will retry at next login.')
+            return False
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    marker.write_text(LAYOUT_REVISION + '\n', encoding='ascii')
+    marker.chmod(0o600)
+    print('ParentPilot dock centred through the active XFCE settings service.')
+    return True
+
+
 if __name__ == '__main__':
-    if sys.argv[1:] != ['--repair']:
-        raise SystemExit('Usage: child_panel.py --repair')
-    repair_child_panel()
+    if sys.argv[1:] == ['--repair']:
+        repair_child_panel()
+    elif sys.argv[1:] == ['--apply-session']:
+        apply_session_panel()
+    else:
+        raise SystemExit('Usage: child_panel.py --repair | --apply-session')
