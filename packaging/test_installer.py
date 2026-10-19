@@ -34,6 +34,36 @@ with tempfile.TemporaryDirectory() as d:
     assert x.getroot().attrib['name']=='xfce4-panel'
     assert all('value' not in elem.attrib for elem in x.findall(".//property[@type='array']")+x.findall(".//property[@type='empty']"))
     assert list((home/'.config/xfce4/panel').glob('launcher-*/**/*.desktop'))
+
+    # Existing Preview 8-11 launchers may have generic theme icons or badly
+    # escaped desktop entries. Preview 12 must repair the REAL launcher
+    # files, not only regenerate xfce4-panel.xml.
+    from parentpilot.child_panel import ICONS
+    expected = {
+        10: 'parentpilot-browser.desktop',
+        11: 'thunar.desktop',
+        12: 'parentpilot-youtube.desktop',
+        13: 'parentpilot-netflix.desktop',
+    }
+    for number, name in expected.items():
+        active = home/'.config/xfce4/panel'/f'launcher-{number}'/name
+        assert active.is_file(), (number, name)
+        raw = active.read_text()
+        lines = raw.splitlines()
+        assert lines[0] == '[Desktop Entry]', (number, repr(raw[:120]))
+        assert 'Type=Application' in lines
+        assert 'Icon=' + str(ICONS[number]) in lines
+        assert not any('\\n' in line for line in lines), 'Malformed literal newline escape'
+        assert 'Exec=' in raw
+        if number in (10, 12, 13):
+            original = home/'.local/share/applications'/name
+            assert original.read_text() == raw, 'Panel should match repaired child app entry'
+            assert 'Exec=true' in raw, 'Preserve child launcher command on repair'
+    icons = ['browser.svg', 'files.svg', 'youtube.svg', 'netflix.svg']
+    for name in icons:
+        image = ET.parse(R/'parentpilot'/name).getroot()
+        assert image.tag.endswith('svg'), name
+
     # App launchers are centred, and systray/clock remain on the right.
     positions=[p.attrib.get('name') for p in x.findall(".//property[@name='plugin-ids']/value")]
     plugins=x.find(".//property[@name='plugin-ids']")
