@@ -39,12 +39,12 @@ jobs:
       - name: Verify same Android application ID and raised version
         run: |
           test -s android-app/app/build/outputs/apk/debug/app-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging android-app/app/build/outputs/apk/debug/app-debug.apk | grep -E "package: name='uk.familycontrol.remote' versionCode='6'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging android-app/app/build/outputs/apk/debug/app-debug.apk | grep -E "package: name='uk.familycontrol.remote' versionCode='7'"
           ! grep -E 'ACTION_VIEW|android.webkit.WebView' android-app/app/src/main/java/uk/familycontrol/remote/MainActivity.kt
       - name: Upload native debug APK (not guaranteed in-place signing match)
         uses: actions/upload-artifact@v4
         with:
-          name: ParentPilot-Android-Redesigned-Debug-APK
+          name: ParentPilot-Android-Updater-Debug-APK
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
