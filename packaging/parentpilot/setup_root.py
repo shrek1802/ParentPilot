@@ -19,6 +19,8 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from preflight import report as host_report
 from child_panel import write_child_panel
+from games_catalog import validate_game_ids
+from games_install import install_selected
 
 APP = Path('/usr/lib/parentpilot/desktop')
 TARGET = Path('/opt/max-family-control')
@@ -56,6 +58,7 @@ def validate(data):
         raise ValueError('Child account password must be 6–128 characters without a colon.')
     if not re.fullmatch(r'[0-9]{6}', pin) or pin in ('000000','111111','123456'):
         raise ValueError('Choose a less obvious six-digit parent PIN.')
+    validate_game_ids(data.get('games', []))
     if data.get('youtube') not in ('kids','supervised'):
         raise ValueError('Select the YouTube Kids or supervised option.')
     for flag in ('netflix','autologin','family_filter','screen_view'):
@@ -238,6 +241,21 @@ def main():
     child_desktop(user,name,data['youtube'],data['netflix'])
     configure_chromium(data['youtube'],data['family_filter'])
     install_timer(user,name,pin,data['autologin'],data['screen_view'])
+    # Optional games never affect successful account/controller setup. Install
+    # only approved APT packages, AFTER the timer and managed marker exist.
+    # If offline or an APT package is unavailable, the family setup remains
+    # usable and the parent may retry later via Games & Learning.
+    game_ids = validate_game_ids(data.get('games', []))
+    if game_ids:
+        print('Installing selected free games from Linux Mint repositories…', flush=True)
+        added, present, errors = install_selected(game_ids)
+        print('Optional games: ' + str(len(added)) + ' installed, ' +
+              str(len(present)) + ' already present, ' +
+              str(len(errors)) + ' unavailable.', flush=True)
+        if errors:
+            print('NOTE: ParentPilot setup succeeded, but some optional games '
+                  'were not downloaded. Open ParentPilot Games & Learning from '
+                  'the adult Applications menu to retry.', flush=True)
     print('SUCCESS: ParentPilot is installed for '+name+'.\n')
     print('The child desktop will be ready next time they sign in. Parental controls are paused until approved.')
     print('Browse to https://<laptop-ip>:8743 from your phone, or use the ParentPilot Android app on the same Wi-Fi.')
