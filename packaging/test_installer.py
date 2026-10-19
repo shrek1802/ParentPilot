@@ -39,6 +39,25 @@ with tempfile.TemporaryDirectory() as d:
         '[Desktop Entry]\nType=Application\nName=My Drawing\n'
         'Exec=true\nCategories=Graphics;\n')
     (apps/'firefox.desktop').write_text(cp.OLD_HIDDEN_ENTRY)
+    # Simulate last preview's allowlisted child menu and its duplicate XDG
+    # Files/Logout items; upgrade must replace it with the normal XFCE menu.
+    old_menu = home/'.config/menus/parentpilot.menu'
+    old_menu.parent.mkdir(parents=True, exist_ok=True)
+    old_root = ET.Element('Menu')
+    ET.SubElement(old_root, 'Name').text = 'ParentPilot'
+    incl = ET.SubElement(old_root, 'Include')
+    for name in ['parentpilot-browser.desktop', 'parentpilot-files.desktop',
+                 'parentpilot-youtube.desktop', 'parentpilot-logout.desktop']:
+        ET.SubElement(incl, 'Filename').text = name
+    ET.ElementTree(old_root).write(old_menu, encoding='utf-8')
+    (apps/'parentpilot-files.desktop').write_text(
+        '[Desktop Entry]\nType=Application\nName=Files\n'
+        'Exec=thunar\nIcon=' + str(cp.ICONS[11]) +
+        '\nTerminal=false\nCategories=Utility;\n')
+    (apps/'parentpilot-logout.desktop').write_text(
+        '[Desktop Entry]\nType=Application\nName=Log out\n'
+        'Exec=xfce4-session-logout\nIcon=system-log-out\n'
+        'Terminal=false\nCategories=System;\n')
     m.write_child_panel(home,1000,netflix=True)
     x=ET.parse(home/'.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
     assert x.getroot().attrib['name']=='xfce4-panel'
@@ -85,6 +104,8 @@ with tempfile.TemporaryDirectory() as d:
     assert app_menu.find("./property[@name='custom-menu']").get('value') == 'false'
     assert app_menu.find("./property[@name='custom-menu-file']") is None
     assert not (home/'.config/menus/parentpilot.menu').exists()
+    assert not (apps/'parentpilot-files.desktop').exists()
+    assert not (apps/'parentpilot-logout.desktop').exists()
     assert x.find(".//property[@name='panel-1']/property[@name='size']").get('value') == '44'
     assert x.find(".//property[@name='panel-1']/property[@name='icon-size']").get('value') == '32'
     assert x.find(".//property[@name='plugin-17']").get('value') == 'tasklist'
