@@ -51,6 +51,7 @@ class MainActivity : Activity() {
     private lateinit var scroll: ScrollView
     private val uiHandler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
+    private val imageWorker = Executors.newFixedThreadPool(2)
     private val preferences by lazy { getSharedPreferences("parentpilot_parent", MODE_PRIVATE) }
     private lateinit var manager: NsdManager
     private var multicast: WifiManager.MulticastLock? = null
@@ -291,6 +292,14 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun <T> backgroundImage(task: () -> T, finish: (Result<T>) -> Unit) {
+        // Image downloads cannot queue in front of urgent parent Pause / Resume.
+        imageWorker.execute {
+            val outcome = runCatching(task)
+            runOnUiThread { if (!isFinishing && !isDestroyed) finish(outcome) }
+        }
+    }
+
     private fun showDashboard(info: ParentState) {
         stopDiscovery()
         resetPage("Connected securely · " + (client?.origin ?: ""))
@@ -435,7 +444,7 @@ class MainActivity : Activity() {
 
     private fun loadPreview() {
         val api = client ?: return
-        background(
+        backgroundImage(
             { api.jpeg() },
             { result ->
                 result.onSuccess { bytes ->
@@ -471,7 +480,7 @@ class MainActivity : Activity() {
                     contentDescription = "Tap to enlarge saved screenshot"
                     setOnClickListener {
                         val api = client ?: return@setOnClickListener
-                        background({ api.jpeg(pic.id) }) { result ->
+                        backgroundImage({ api.jpeg(pic.id) }) { result ->
                             result.onSuccess { openPictureViewer(it, pic.time) }
                         }
                     }
@@ -480,7 +489,7 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.MATCH_PARENT, 140.dp()
                 ))
                 val api = client
-                if (api != null) background({ api.jpeg(pic.id) }) { result ->
+                if (api != null) backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { bytes ->
                         if (client === api) {
                             val options = BitmapFactory.Options().apply { inSampleSize = 4 }
@@ -492,14 +501,14 @@ class MainActivity : Activity() {
             }
             button(row, "View / zoom saved picture") {
                 val api = client ?: return@button
-                background({ api.jpeg(pic.id) }) { result ->
+                backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { openPictureViewer(it, pic.time) }
                         .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
                 }
             }
             button(row, "Download picture to phone") {
                 val api = client ?: return@button
-                background({ api.jpeg(pic.id) }) { result ->
+                backgroundImage({ api.jpeg(pic.id) }) { result ->
                     result.onSuccess { saveWithSystemPicker(it, pic.id) }
                         .onFailure { Toast.makeText(this, safeError(it), Toast.LENGTH_LONG).show() }
                 }
@@ -702,6 +711,7 @@ class MainActivity : Activity() {
         stopDiscovery()
         uiHandler.removeCallbacksAndMessages(null)
         worker.shutdownNow()
+        imageWorker.shutdownNow()
         super.onDestroy()
     }
 }
