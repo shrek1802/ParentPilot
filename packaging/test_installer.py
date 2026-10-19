@@ -64,6 +64,7 @@ with tempfile.TemporaryDirectory() as d:
         image = ET.parse(R/'parentpilot'/name).getroot()
         assert image.tag.endswith('svg'), name
 
+    from parentpilot import child_panel as cp
     # The child menu must list only explicitly allowed family apps, not
     # the default XFCE System, Settings, Office, or Run Program categories.
     menu = home / '.config/menus/parentpilot.menu'
