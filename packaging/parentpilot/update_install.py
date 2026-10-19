@@ -9,6 +9,7 @@ package digest and metadata, backs up files, and verifies the service after upda
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import secrets
 import shutil
@@ -75,6 +76,17 @@ def save_snapshot():
         if source.exists():
             shutil.copytree(source, backup / name, symlinks=True)
     shutil.copy2(UNIT, backup / 'control-service.unit')
+    # Preserve ONLY the managed child's XFCE panel file, not their entire
+    # home directory. The layout patch never changes parent accounts.
+    try:
+        child = json.loads((CFG / 'config.json').read_text())['child']
+        child_entry = pwd.getpwnam(child)
+        panel_file = (Path(child_entry.pw_dir) /
+                      '.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
+        if panel_file.is_file() and not panel_file.is_symlink():
+            shutil.copy2(panel_file, backup / 'child-panel.xml')
+    except (OSError, KeyError, ValueError):
+        raise RuntimeError('Cannot back up the child panel. Refusing update.')
     (backup / 'version.txt').write_text(installed_version() + '\n')
     (backup / 'version.txt').chmod(0o600)
     print('Private backup created: ' + str(backup), flush=True)
@@ -90,6 +102,15 @@ def restore_snapshot(backup):
         source = backup / name
         if source.is_dir():
             shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
+    saved_panel = backup / 'child-panel.xml'
+    if saved_panel.is_file():
+        child = json.loads((CFG / 'config.json').read_text())['child']
+        child_entry = pwd.getpwnam(child)
+        panel_file = (Path(child_entry.pw_dir) /
+                      '.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml')
+        if not panel_file.is_symlink() and panel_file.parent.is_dir():
+            shutil.copy2(saved_panel, panel_file)
+            os.chown(panel_file, child_entry.pw_uid, child_entry.pw_gid)
     original_unit = backup / 'control-service.unit'
     if original_unit.is_file():
         shutil.copy2(original_unit, UNIT)
@@ -149,6 +170,20 @@ def deploy_program_files():
                 raise IOError('Package deployment integrity check failed: ' + item.name)
 
 
+def repair_managed_child_panel():
+    """Apply layout refresh as child user, never root, only to our XFCE panel."""
+    child = json.loads((CFG / 'config.json').read_text())['child']
+    account = pwd.getpwnam(child)
+    if account.pw_uid == 0:
+        raise RuntimeError('Refusing to repair the root account panel.')
+    program = '/usr/lib/parentpilot/child_panel.py'
+    if not Path(program).is_file():
+        raise RuntimeError('Child panel repair module missing from DEB.')
+    result = cmd('runuser', '-u', child, '--', '/usr/bin/python3',
+                 program, '--repair', timeout=30)
+    print(result.stdout.strip(), flush=True)
+
+
 def health_check():
     cmd(SYSTEMCTL, 'restart', 'max-family-control.service', timeout=25)
     cmd(SYSTEMCTL, 'is-active', '--quiet', 'max-family-control.service', timeout=10)
@@ -189,6 +224,7 @@ def install(channel, expected_tag):
             cmd('apt-get', 'install', '-y', '--no-remove',
                 '--no-install-recommends', str(archive), timeout=300)
             deploy_program_files()
+            repair_managed_child_panel()
             health_check()
         except Exception:
             print('Update failed. Restoring previously deployed service and data…', flush=True)
