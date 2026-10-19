@@ -8,7 +8,7 @@ on:
     branches:
       - feature/preview3-setup-screen-consent
     paths:
-      - .github/workflows/publish-verified-preview8.yml
+      - .github/workflows/publish-verified-preview7.yml
   workflow_dispatch:
 
 permissions:
