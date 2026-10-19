@@ -40,6 +40,8 @@ jobs:
         run: |
           xvfb-run -a -s '-screen 0 1024x600x24' python3 packaging/test_updates_gui.py
           xvfb-run -a -s '-screen 0 800x480x24' python3 packaging/test_updates_gui.py
+          xvfb-run -a -s '-screen 0 1024x600x24' python3 packaging/test_games_gui.py
+          xvfb-run -a -s '-screen 0 800x480x24' python3 packaging/test_games_gui.py
       - name: Test single supervisor per child session
         run: python3 desktop/test_supervisor_singleton.py
 
