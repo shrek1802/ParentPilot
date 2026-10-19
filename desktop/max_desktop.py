@@ -70,17 +70,20 @@ class MaxUI:
         self.root.mainloop()
 
     def create_widget(self):
+        """A small status pill at the TOP right, never over the bottom XFCE panel."""
         self.widget = tk.Toplevel(self.root)
         self.widget.overrideredirect(True)
         self.widget.wm_attributes('-topmost', True)
-        self.widget.configure(bg=BG, padx=14, pady=10)
-        self.indicator = tk.Label(self.widget, text='', fg=WHITE, bg=BG, font=('Sans', 10, 'bold'))
+        self.widget.configure(bg=PANEL, padx=13, pady=9)
+        self.indicator = tk.Label(
+            self.widget, text='', fg=WHITE, bg=PANEL,
+            font=('Sans', 10, 'bold'), anchor='center',
+        )
         self.indicator.pack()
         self.widget.update_idletasks()
-        width = 180; height = 44
-        x = self.widget.winfo_screenwidth() - width - 20
-        y = self.widget.winfo_screenheight() - height - 60
-        self.widget.geometry(f'{width}x{height}+{x}+{y}')
+        # Never compete with the child's bottom taskbar or its notification area.
+        width = max(215, self.widget.winfo_reqwidth() + 24)
+        self.widget.geometry(f'{width}x43+{max(0, self.widget.winfo_screenwidth()-width-18)}+18')
 
     def hide_widget(self):
         if self.widget is not None:
@@ -88,55 +91,156 @@ class MaxUI:
             self.widget = None
             self.indicator = None
 
+    def _focus_parent_pin(self):
+        """Request initial keyboard focus, with a few bounded XFCE/X11 retries.
+
+        A fullscreen window managed by XFCE can accept keyboard focus; an
+        override-redirect one often cannot. Never refocus on the timer poll,
+        because that previously caused flicker and interrupted PIN entry.
+        """
+        overlay = self.overlay
+        if overlay is None:
+            return
+        for delay in (30, 180, 600):
+            def focus_once(window=overlay):
+                try:
+                    if self.overlay is not window or not window.winfo_exists():
+                        return
+                    if self.password.focus_get() is self.password:
+                        return
+                    window.lift()
+                    window.focus_force()
+                    self.password.focus_force()
+                    self.password.icursor('end')
+                except tk.TclError:
+                    pass
+            overlay.after(delay, focus_once)
+
     def create_overlay(self):
+        # Exactly ONE managed fullscreen X11 window. Unlike override-redirect
+        # it receives a window-manager activation/focus request in XFCE.
+        # No second fullscreen curtain, and no repeated Tk lift on polling.
         self.overlay = tk.Toplevel(self.root)
-        self.overlay.withdraw()  # Build controls offscreen first. One cover, no blank curtain.
-        self.overlay.overrideredirect(True)
-        self.overlay.title('ParentPilot — time is up')
+        self.overlay.withdraw()
+        self.overlay.title('ParentPilot — parental approval')
         self.overlay.configure(bg=BG)
-        self.overlay.geometry(f'{self.overlay.winfo_screenwidth()}x{self.overlay.winfo_screenheight()}+0+0')
+        self.overlay.geometry(
+            f'{self.overlay.winfo_screenwidth()}x{self.overlay.winfo_screenheight()}+0+0'
+        )
+        self.overlay.attributes('-fullscreen', True)
         self.overlay.attributes('-topmost', True)
         self.overlay.protocol('WM_DELETE_WINDOW', lambda: None)
-        # Single-window override-redirect overlays XFCE panels without a second mask.
         self.overlay.bind('<Escape>', lambda _: 'break')
         self.overlay.bind('<Alt-F4>', lambda _: 'break')
 
-        base = tk.Frame(self.overlay, bg=BG)
-        base.place(relx=.5, rely=.5, anchor='center', relwidth=.85)
+        sw = self.overlay.winfo_screenwidth()
+        sh = self.overlay.winfo_screenheight()
+        compact = sh < 670
+        card_width = max(290, min(570, sw - 36))
+        body = tk.Frame(self.overlay, bg=BG)
+        body.place(relx=.5, rely=.5, anchor='center', width=card_width)
+
+        brand = tk.Frame(body, bg=BG)
+        brand.pack(pady=(0, 15 if not compact else 7))
         try:
-            # PhotoImage handles PNG without requiring third-party image libraries.
-            self.logo_image = tk.PhotoImage(file=str(Path(__file__).resolve().parent / 'assets' / 'parentpilot-icon-128.png'))
-            tk.Label(base, image=self.logo_image, bg=BG).pack(pady=(0, 6))
+            icon_file = Path(__file__).resolve().parent / 'assets' / 'parentpilot-icon-128.png'
+            self.logo_image = tk.PhotoImage(file=str(icon_file)).subsample(2)
+            tk.Label(brand, image=self.logo_image, bg=BG).pack()
         except (tk.TclError, OSError):
             self.logo_image = None
-        tk.Label(base, text='PARENTPILOT', fg=ACCENT, bg=BG, font=('Sans', 13, 'bold')).pack(pady=(0, 12))
-        self.title_label = tk.Label(base, text='Time to take a break', fg=WHITE, bg=BG, font=('Sans', 28, 'bold'))
-        self.title_label.pack(pady=(0, 12))
-        self.description = tk.Label(base, text='Ask Mum or Dad if you can have some more time.', fg=MUTED, bg=BG, font=('Sans', 14), wraplength=630)
-        self.description.pack(pady=(0, 28))
-        form = tk.Frame(base, bg=PANEL, padx=18, pady=18)
-        form.pack(fill='x')
-        tk.Label(form, text='Parents only — add time', fg=WHITE, bg=PANEL, font=('Sans', 13, 'bold')).pack(anchor='w', pady=(0, 9))
-        tk.Label(form, text='Parent PIN (6 digits)', fg=MUTED, bg=PANEL, font=('Sans', 10)).pack(anchor='w')
-        self.password = tk.Entry(form, show='•', font=('Sans', 13), width=16)
-        self.password.pack(fill='x', pady=(4, 12))
-        tk.Label(form, text='Extra minutes', fg=MUTED, bg=PANEL, font=('Sans', 10)).pack(anchor='w')
+        tk.Label(
+            brand, text='P A R E N T P I L O T', fg=ACCENT, bg=BG,
+            font=('Sans', 10, 'bold')
+        ).pack(pady=(5, 0))
+
+        self.title_label = tk.Label(
+            body, text='Time to take a break', fg=WHITE, bg=BG,
+            font=('Sans', 25 if not compact else 22, 'bold'),
+        )
+        self.title_label.pack(pady=(0, 7))
+        self.description = tk.Label(
+            body, text='Ask a parent if you can have more time.',
+            fg=MUTED, bg=BG, font=('Sans', 12),
+            wraplength=card_width - 45, justify='center',
+        )
+        self.description.pack(pady=(0, 18 if not compact else 10))
+
+        card = tk.Frame(body, bg=PANEL, padx=23, pady=17 if not compact else 10)
+        card.pack(fill='x', padx=6)
+        tk.Frame(card, bg=ACCENT, height=3).pack(fill='x', pady=(0, 14))
+        tk.Label(
+            card, text='PARENT APPROVAL', fg=ACCENT, bg=PANEL,
+            font=('Sans', 10, 'bold'), anchor='w'
+        ).pack(fill='x', pady=(0, 14))
+        tk.Label(
+            card, text='6-digit parent PIN', fg=WHITE, bg=PANEL,
+            font=('Sans', 11, 'bold'), anchor='w'
+        ).pack(fill='x', pady=(0, 6))
+        pin_border = tk.Frame(card, bg='#475569', padx=1, pady=1)
+        pin_border.pack(fill='x')
+        self.password = tk.Entry(
+            pin_border, show='•', font=('Sans', 16),
+            bg='#0b1220', fg=WHITE, insertbackground=ACCENT,
+            selectbackground='#0e7490', relief='flat',
+            borderwidth=0, highlightthickness=0,
+        )
+        self.password.pack(fill='x', ipady=9, padx=2, pady=2)
+        self.password.bind('<Return>', lambda _: self.parent_grant())
+
+        tk.Label(
+            card, text='Extra time', fg=WHITE, bg=PANEL,
+            font=('Sans', 11, 'bold'), anchor='w',
+        ).pack(fill='x', pady=(14, 6))
         self.minutes = tk.StringVar(value='30')
-        ttk.Combobox(form, textvariable=self.minutes, values=['15','30','45','60','90','120'], state='normal', font=('Sans', 12)).pack(fill='x', pady=(4, 14))
-        tk.Button(form, text='Add time and return to desktop', command=self.parent_grant, bg='#0284c7', fg=WHITE, activebackground='#0369a1', font=('Sans', 12, 'bold'), padx=14, pady=10, borderwidth=0).pack(fill='x')
-        self.msg = tk.Label(form, text='', fg='#fca5a5', bg=PANEL, font=('Sans', 10), wraplength=540)
-        self.msg.pack(pady=(8, 0))
-        self.connection_warning = tk.Label(base, text='', fg='#fcd34d', bg=BG,
-                                           font=('Sans', 10, 'bold'), wraplength=620)
-        self.connection_warning.pack(pady=(10, 0))
-        bottom = tk.Frame(base, bg=BG)
-        bottom.pack(pady=(23, 0))
-        tk.Button(bottom, text='Switch user', command=self.switch_user, bg='#334155', fg=WHITE, font=('Sans', 11), padx=12, pady=8, borderwidth=0).pack(side='left', padx=10)
-        tk.Button(bottom, text='Shut down', command=self.shutdown, bg='#334155', fg=WHITE, font=('Sans', 11), padx=12, pady=8, borderwidth=0).pack(side='left', padx=10)
+        combo_style = ttk.Style(self.overlay)
+        combo_style.configure('ParentPilot.TCombobox', padding=(8, 5))
+        self.minutes_box = ttk.Combobox(
+            card, textvariable=self.minutes,
+            values=['15', '30', '45', '60', '90', '120'],
+            state='readonly', font=('Sans', 12),
+            style='ParentPilot.TCombobox',
+        )
+        self.minutes_box.pack(fill='x')
+        tk.Button(
+            card, text='Approve and add time', command=self.parent_grant,
+            bg='#22d3ee', fg='#082f49', activebackground='#67e8f9',
+            activeforeground='#082f49', font=('Sans', 12, 'bold'),
+            padx=14, pady=12 if not compact else 9,
+            borderwidth=0, cursor='hand2',
+        ).pack(fill='x', pady=(17, 0))
+
+        self.msg = tk.Label(
+            card, text='', fg='#fecaca', bg=PANEL,
+            font=('Sans', 10), wraplength=card_width - 75,
+        )
+        self.msg.pack(pady=(7, 0))
+        self.connection_warning = tk.Label(
+            body, text='', fg='#fcd34d', bg=BG,
+            font=('Sans', 10, 'bold'), wraplength=card_width - 35,
+        )
+        self.connection_warning.pack(pady=(9, 0))
+
+        footer = tk.Frame(body, bg=BG)
+        footer.pack(pady=(15 if not compact else 8, 0))
+        for label, action in (
+            ('Switch user', self.switch_user),
+            ('Shut down', self.shutdown),
+        ):
+            tk.Button(
+                footer, text=label, command=action, bg='#334155',
+                fg=WHITE, activebackground='#475569',
+                activeforeground=WHITE, font=('Sans', 10, 'bold'),
+                padx=20, pady=9 if not compact else 7,
+                borderwidth=0, cursor='hand2',
+            ).pack(side='left', padx=7)
+        tk.Label(
+            body, text='Your parent can also manage time from their phone.',
+            bg=BG, fg='#8fa7be', font=('Sans', 9),
+        ).pack(pady=(11 if not compact else 7, 0))
+
         self.overlay.deiconify()
         self.overlay.lift()
-        # Focus PIN field once; avoid stealing focus on every timer refresh.
-        self.overlay.after(150, lambda: self.password.focus_force() if self.password.winfo_exists() else None)
+        self._focus_parent_pin()
 
     def parent_grant(self):
         password = self.password.get()
