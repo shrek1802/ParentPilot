@@ -53,12 +53,22 @@ def notify_only():
         return
 
 
+def fit_update_window(screen_width, screen_height):
+    """Keep the window within the usable screen even on compact XFCE laptops."""
+    w = max(300, min(620, int(screen_width) - 65))
+    h = max(270, min(525, int(screen_height) - 105))
+    return min(w, int(screen_width)), min(h, int(screen_height))
+
+
 class UpdatesGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title('ParentPilot Updates')
-        self.root.geometry('600x560')
-        self.root.minsize(480, 440)
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        width, height = fit_update_window(sw, sh)
+        self.root.geometry(f'{width}x{height}+{max(0, (sw-width)//2)}+{max(0, (sh-height)//2)}')
+        self.root.minsize(min(380, width), min(320, height))
         self.root.configure(background='#111827')
         self.events = queue.Queue()
         self.release = None
@@ -71,58 +81,88 @@ class UpdatesGUI:
             pass
         style.configure('Parent.TFrame', background='#111827')
         style.configure('Parent.TLabel', background='#111827', foreground='#F8FAFC',
-                        font=('Sans', 11))
-        style.configure('Muted.TLabel', background='#111827', foreground='#BAC9DB',
                         font=('Sans', 10))
+        style.configure('Muted.TLabel', background='#111827', foreground='#E2E8F0',
+                        font=('Sans', 9))
         style.configure('Header.TLabel', background='#111827', foreground='#F8FAFC',
-                        font=('Sans', 22, 'bold'))
-        style.configure('Parent.TButton', padding=(18, 11), font=('Sans', 11, 'bold'))
-        frame = ttk.Frame(self.root, style='Parent.TFrame', padding=22)
+                        font=('Sans', 19, 'bold'))
+        style.configure('Parent.TButton', padding=(12, 7), font=('Sans', 10, 'bold'))
+        frame = ttk.Frame(self.root, style='Parent.TFrame', padding=14)
         frame.pack(fill='both', expand=True)
-        ttk.Label(frame, text='ParentPilot Updates', style='Header.TLabel').pack(anchor='w')
-        ttk.Label(frame, text='Updates for the family laptop · Administrator approval required',
-                  style='Muted.TLabel').pack(anchor='w', pady=(4, 17))
+
+        # Reserve space for controls FIRST. On 1024x600/XFCE the previous
+        # 11-line notes field and long disclaimer pushed these buttons below
+        # the visible window; pack(bottom) prevents this on small displays.
+        controls = ttk.Frame(frame, style='Parent.TFrame')
+        controls.pack(side='bottom', fill='x', pady=(8, 0))
+        self.check_button = ttk.Button(
+            controls, text='Check for updates',
+            style='Parent.TButton', command=self.check,
+        )
+        self.check_button.pack(side='left', padx=(0, 8))
+        self.install_button = ttk.Button(
+            controls, text='Install update',
+            style='Parent.TButton', command=self.install,
+            state='disabled',
+        )
+        self.install_button.pack(side='left')
+
+        ttk.Label(
+            frame,
+            text='Adult approval required · Backups made before installation · '
+                 'Child must be signed out',
+            style='Muted.TLabel', wraplength=max(230, width - 55),
+            justify='left',
+        ).pack(side='bottom', anchor='w', pady=(8, 2))
+
+        ttk.Label(frame, text='ParentPilot Updates',
+                  style='Header.TLabel').pack(anchor='w')
+        ttk.Label(
+            frame, text='Updates for the family laptop',
+            style='Muted.TLabel',
+        ).pack(anchor='w', pady=(1, 9))
         try:
             version = installed_version()
         except (OSError, RuntimeError):
             version = 'Unknown'
         ttk.Label(frame, text='Installed version: ' + version,
-                  style='Parent.TLabel').pack(anchor='w', pady=5)
+                  style='Parent.TLabel').pack(anchor='w', pady=3)
 
         chooser = ttk.Frame(frame, style='Parent.TFrame')
-        chooser.pack(fill='x', pady=(8, 14))
-        ttk.Label(chooser, text='Update channel', style='Parent.TLabel').pack(side='left')
+        chooser.pack(fill='x', pady=(5, 8))
+        ttk.Label(chooser, text='Update channel',
+                  style='Parent.TLabel').pack(side='left')
         self.channel = tk.StringVar(value='stable')
         self.channel_select = ttk.Combobox(
             chooser, textvariable=self.channel, state='readonly',
-            values=('stable', 'preview'), width=14)
-        self.channel_select.pack(side='left', padx=16)
+            values=('stable', 'preview'), width=13,
+        )
+        self.channel_select.pack(side='left', padx=10)
         self.channel_select.bind('<<ComboboxSelected>>', lambda _event: self.check())
+
         self.status = tk.StringVar(value='Checking for updates…')
-        ttk.Label(frame, textvariable=self.status, style='Parent.TLabel',
-                  wraplength=515).pack(anchor='w', pady=(5, 12))
-        ttk.Label(frame, text="What's new", style='Parent.TLabel').pack(anchor='w')
-        self.notes = tk.Text(frame, height=11, wrap='word',
-                             bg='#1F2937', fg='#F8FAFC', insertbackground='#F8FAFC',
-                             font=('Sans', 10), relief='flat', borderwidth=0, padx=12, pady=10)
-        self.notes.pack(fill='both', expand=True, pady=(6, 14))
+        ttk.Label(
+            frame, textvariable=self.status, style='Parent.TLabel',
+            wraplength=max(230, width - 45),
+        ).pack(anchor='w', pady=(3, 7))
+        ttk.Label(frame, text="Release notes / update details",
+                  style='Parent.TLabel').pack(anchor='w')
+
+        # Text shrinks before controls, with scrolling for long release notes.
+        notes_frame = ttk.Frame(frame, style='Parent.TFrame')
+        notes_frame.pack(fill='both', expand=True, pady=(4, 0))
+        scroll = ttk.Scrollbar(notes_frame, orient='vertical')
+        self.notes = tk.Text(
+            notes_frame, height=3, wrap='word',
+            bg='#1F2937', fg='#F8FAFC', insertbackground='#F8FAFC',
+            font=('Sans', 10), relief='flat', borderwidth=0,
+            padx=9, pady=8, yscrollcommand=scroll.set,
+        )
+        scroll.configure(command=self.notes.yview)
+        scroll.pack(side='right', fill='y')
+        self.notes.pack(side='left', fill='both', expand=True)
         self.set_notes('Select a channel to check published GitHub Releases.')
 
-        controls = ttk.Frame(frame, style='Parent.TFrame')
-        controls.pack(fill='x')
-        self.check_button = ttk.Button(controls, text='Check for updates',
-                                       style='Parent.TButton', command=self.check)
-        self.check_button.pack(side='left', padx=(0, 10))
-        self.install_button = ttk.Button(
-            controls, text='Install update', style='Parent.TButton',
-            command=self.install, state='disabled')
-        self.install_button.pack(side='left')
-        ttk.Label(frame,
-                  text='Only published releases with verified SHA-256 digests qualify. '
-                       'A child must be signed out before installation. '
-                       'Your account, parent PIN and saved pictures are backed up.',
-                  style='Muted.TLabel', wraplength=510,
-                  justify='left').pack(anchor='w', pady=(18, 0))
         self.root.after(150, self.process_events)
         self.root.after(450, self.check)
 
