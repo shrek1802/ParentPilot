@@ -87,5 +87,43 @@ try:
     guard._raise_without_focus(Overlay())
     assert guard._x11.calls == ['raise', 'flush']
     print('PASS: X11 overlay raise does not call Tk lift repeatedly')
+    # New XFCE lock must be a WM-managed fullscreen window. Older
+    # override-redirect popup could only accept PIN input after Alt+Tab.
+    import inspect
+    create_source = inspect.getsource(desktop.MaxUI.create_overlay)
+    assert "overrideredirect(True)" not in create_source
+    assert "attributes('-fullscreen', True)" in create_source
+
+    class FocusWindow:
+        def __init__(self):
+            self.actions = []
+            self.callbacks = []
+        def after(self, delay, callback):
+            self.callbacks.append((delay, callback))
+        def winfo_exists(self): return True
+        def lift(self): self.actions.append('lift')
+        def focus_force(self): self.actions.append('focus')
+
+    class PinField:
+        def __init__(self, window):
+            self.window = window
+            self.focused = False
+        def focus_get(self): return self if self.focused else None
+        def focus_force(self):
+            self.focused = True
+            self.window.actions.append('pin-focus')
+        def icursor(self, where): pass
+
+    ui = object.__new__(desktop.MaxUI)
+    ui.overlay = FocusWindow()
+    ui.password = PinField(ui.overlay)
+    ui._focus_parent_pin()
+    assert [delay for delay, _ in ui.overlay.callbacks] == [30, 180, 600]
+    for _, callback in ui.overlay.callbacks:
+        callback()
+    assert ui.password.focused
+    assert ui.overlay.actions == ['lift', 'focus', 'pin-focus']
+    print('PASS: managed fullscreen lock requests PIN focus once without repeated steals')
+
 finally:
     desktop.request_state = saved_request
