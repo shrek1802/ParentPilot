@@ -425,6 +425,7 @@ class MainActivity : Activity() {
         gallery = null
         childStatus = null
         connectionBadge = null
+        if (selectedTab == 2) previousScreenStatus = ""
         val heading = when (selectedTab) {
             1 -> "Manage time"
             2 -> "Screen viewer"
@@ -760,12 +761,15 @@ class MainActivity : Activity() {
             latestBytes = null
             preview?.visibility = View.GONE
         } else if (latestBytes != null && preview != null) {
-            // Reattach a previously loaded picture when switching to Screen tab.
-            val bytes = latestBytes!!
-            val picture = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            if (picture != null) {
-                preview?.setImageBitmap(picture)
-                preview?.visibility = View.VISIBLE
+            // Decode only on first display after opening Screen tab, not every poll.
+            val target = preview
+            if (target?.visibility != View.VISIBLE) {
+                val bytes = latestBytes!!
+                val picture = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                if (picture != null) {
+                    target?.setImageBitmap(picture)
+                    target?.visibility = View.VISIBLE
+                }
             }
         } else if (latestBytes == null && previousScreenStatus != "ready" && preview != null) {
             loadPreview()
