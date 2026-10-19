@@ -2,7 +2,7 @@ name: Build ParentPilot Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/preview3-setup-screen-consent]
     paths:
       - 'android-app/**'
       - '.github/workflows/build-android.yml'
@@ -19,7 +19,7 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Set up Java 17
@@ -27,22 +27,54 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install SDK platform 35
+      - name: Install Android SDK platform 35
         run: |
-          echo "Using preinstalled ANDROID_HOME=$ANDROID_HOME"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Compile Android APK
+      - name: Compile native Android test APK
         run: gradle --no-daemon --stacktrace -p android-app :app:assembleDebug
-      - name: Check APK exists
-        run: test -s android-app/app/build/outputs/apk/debug/app-debug.apk
-      - name: Upload installable debug APK
+      - name: Verify same Android application ID and raised version
+        run: |
+          test -s android-app/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging android-app/app/build/outputs/apk/debug/app-debug.apk | grep -E "package: name='uk.familycontrol.remote' versionCode='5'"
+          ! grep -E 'ACTION_VIEW|android.webkit.WebView' android-app/app/src/main/java/uk/familycontrol/remote/MainActivity.kt
+      - name: Upload native debug APK (not guaranteed in-place signing match)
         uses: actions/upload-artifact@v4
         with:
-          name: ParentPilot-Android-debug-APK
+          name: ParentPilot-Android-Native-Debug-APK
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Prepare persistent release signing from GitHub Secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.PARENTPILOT_SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/parentpilot-release.jks"
+            test -s "$RUNNER_TEMP/parentpilot-release.jks"
+            echo 'PARENTPILOT_RELEASE_KEY_AVAILABLE=true' >> "$GITHUB_ENV"
+          else
+            echo 'PARENTPILOT_RELEASE_KEY_AVAILABLE=false' >> "$GITHUB_ENV"
+            echo 'No persistent release key configured; debug APK cannot guarantee updates over previous builds.'
+          fi
+      - name: Build persistent-key signed release APK
+        if: env.PARENTPILOT_RELEASE_KEY_AVAILABLE == 'true'
+        env:
+          PARENTPILOT_SIGNING_STORE_PASSWORD: ${{ secrets.PARENTPILOT_SIGNING_STORE_PASSWORD }}
+          PARENTPILOT_SIGNING_KEY_ALIAS: ${{ secrets.PARENTPILOT_SIGNING_KEY_ALIAS }}
+          PARENTPILOT_SIGNING_KEY_PASSWORD: ${{ secrets.PARENTPILOT_SIGNING_KEY_PASSWORD }}
+        run: |
+          export PARENTPILOT_SIGNING_STORE="$RUNNER_TEMP/parentpilot-release.jks"
+          gradle --no-daemon -p android-app :app:assembleRelease
+          test -s android-app/app/build/outputs/apk/release/app-release.apk
+      - name: Upload persistent-key signed release APK
+        if: env.PARENTPILOT_RELEASE_KEY_AVAILABLE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParentPilot-Android-Native-Signed-APK
+          path: android-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
