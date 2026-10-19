@@ -31,6 +31,26 @@ assert preview and preview['version'] == '0.5.0~preview7'
 assert rel.find_update([sample()], old, 'stable') is None
 assert rel.newer_version('0.5.0~preview7', old)
 assert not rel.newer_version(old, '0.5.0~preview7')
+# GitHub sanitises '~' to '.' in published asset filenames. The internal
+# Debian version must still be read as 0.5.0~preview7, not 0.5.0.preview7.
+normalised = sample()
+normalised['assets'][0]['name'] = 'parentpilot_0.5.0.preview7_all.deb'
+normalised['assets'][0]['browser_download_url'] = (
+    'https://github.com/shrek1802/ParentPilot/releases/download/'
+    'v0.5.0-preview7/parentpilot_0.5.0.preview7_all.deb'
+)
+normalised_found = rel.find_update([normalised], old, 'preview')
+assert normalised_found is not None
+assert normalised_found['version'] == '0.5.0~preview7'
+assert normalised_found['filename'] == 'parentpilot_0.5.0.preview7_all.deb'
+mismatched = sample()
+mismatched['assets'][0]['name'] = 'parentpilot_0.5.0.preview8_all.deb'
+mismatched['assets'][0]['browser_download_url'] = (
+    'https://github.com/shrek1802/ParentPilot/releases/download/'
+    'v0.5.0-preview7/parentpilot_0.5.0.preview8_all.deb'
+)
+assert rel.find_update([mismatched], old, 'preview') is None
+
 assert rel.find_update([sample()], '0.5.0~preview7', 'preview') is None
 assert rel.find_update([sample(tag='v0.5.0', version='0.5.0',
                                prerelease=False)], old, 'stable') is not None
