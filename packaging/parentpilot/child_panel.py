@@ -209,7 +209,16 @@ def xfconf_commands_for_panel(home):
     if plugin_ids.index(19) <= 2:
         return []
     query = 'xfconf-query'
-    commands = []
+    commands = [
+        # Force the branded child menu icon even if xfconfd cached old settings.
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/button-icon',
+         '-n', '-t', 'string', '-s',
+         '/usr/share/icons/hicolor/64x64/apps/parentpilot.png'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/show-button-title',
+         '-n', '-t', 'bool', '-s', 'false'],
+        [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/size',
+         '-n', '-t', 'uint', '-s', '42'],
+    ]
     for plugin_id in (18, 19):
         commands.extend([
             [query, '-c', 'xfce4-panel', '-p', f'/plugins/plugin-{plugin_id}',
@@ -261,6 +270,9 @@ def apply_session_panel(home=None, runner=subprocess.run):
         if result.returncode != 0:
             print('DEFERRED: XFCE rejected a panel setting. Will retry at next login.')
             return False
+    # A one-time panel restart at login reloads freshly written .desktop
+    # icons. Avoid restarting the compositor/window manager or lock service.
+    # Never loop the restart: write the marker BEFORE requesting it.
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     marker.write_text(LAYOUT_REVISION + '\n', encoding='ascii')
     marker.chmod(0o600)
