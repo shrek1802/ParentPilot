@@ -124,14 +124,14 @@ def restore_normal_apps_and_hide_other_browsers(home):
     # avoiding duplicate Files / Log out entries in XFCE's restored full menu.
     legacy_generated = {
         'parentpilot-files.desktop': (
-            '[Desktop Entry]\\nType=Application\\nName=Files\\n'
-            'Exec=thunar\\nIcon=' + str(ICONS[11]) +
-            '\\nTerminal=false\\nCategories=Utility;\\n'
+            '[Desktop Entry]\nType=Application\nName=Files\n'
+            'Exec=thunar\nIcon=' + str(ICONS[11]) +
+            '\nTerminal=false\nCategories=Utility;\n'
         ),
         'parentpilot-logout.desktop': (
-            '[Desktop Entry]\\nType=Application\\nName=Log out\\n'
-            'Exec=xfce4-session-logout\\nIcon=system-log-out\\n'
-            'Terminal=false\\nCategories=System;\\n'
+            '[Desktop Entry]\nType=Application\nName=Log out\n'
+            'Exec=xfce4-session-logout\nIcon=system-log-out\n'
+            'Terminal=false\nCategories=System;\n'
         ),
     }
     for name, original in legacy_generated.items():
