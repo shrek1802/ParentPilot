@@ -11,8 +11,30 @@ android {
         applicationId = "uk.familycontrol.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.3-preview"
+        versionCode = 5
+        versionName = "0.4.0-native-preview"
+    }
+    // The applicationId is unchanged so Android recognises this as the same app.
+    // In-place installation ALSO requires the previous APK signing certificate.
+    // Production signing uses private CI secrets; never commit keystores to GitHub.
+    signingConfigs {
+        create("parentpilotRelease") {
+            val keyPath = System.getenv("PARENTPILOT_SIGNING_STORE")
+            if (!keyPath.isNullOrBlank()) {
+                storeFile = file(keyPath)
+                storePassword = System.getenv("PARENTPILOT_SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("PARENTPILOT_SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("PARENTPILOT_SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (!System.getenv("PARENTPILOT_SIGNING_STORE").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("parentpilotRelease")
+            }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
