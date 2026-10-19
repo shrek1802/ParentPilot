@@ -99,16 +99,16 @@ def child_desktop(user, name, youtube, netflix):
     home=Path(pw.pw_dir)
     appl=home/'.local/share/applications'; appl.mkdir(parents=True,exist_ok=True)
     icons=home/'.local/share/icons'; icons.mkdir(parents=True,exist_ok=True)
-    for icon in ('youtube.svg','netflix.svg'):
+    for icon in ('browser.svg','files.svg','youtube.svg','netflix.svg'):
         shutil.copy2(Path('/usr/lib/parentpilot/icons')/icon,icons/f'parentpilot-{icon}')
     browser=shutil.which('chromium') or shutil.which('chromium-browser')
     if not browser: raise RuntimeError('Chromium is missing. Please install it and retry.')
-    make_desktop(appl/'parentpilot-browser.desktop','Family Chromium',f'{browser} --no-first-run','chromium','Chromium browser with available family policies')
+    make_desktop(appl/'parentpilot-browser.desktop','Family Chromium',f'{browser} --no-first-run',str(Path('/usr/lib/parentpilot/icons/browser.svg')),'Chromium browser with available family policies')
     if youtube == 'kids': url='https://www.youtubekids.com/'; title='YouTube Kids'
     else: url='https://www.youtube.com/'; title='YouTube (Supervised)'
-    make_desktop(appl/'parentpilot-youtube.desktop',title,f'{browser} --no-first-run --app={url}',str(icons/'parentpilot-youtube.svg'),'A parent must configure the age/maturity setting online')
+    make_desktop(appl/'parentpilot-youtube.desktop',title,f'{browser} --no-first-run --app={url}',str(Path('/usr/lib/parentpilot/icons/youtube.svg')),'A parent must configure the age/maturity setting online')
     if netflix:
-        make_desktop(appl/'parentpilot-netflix.desktop','Netflix', f'{browser} --no-first-run --app=https://www.netflix.com/',str(icons/'parentpilot-netflix.svg'),'Use a Kids profile and lock adult profiles. DRM requires Widevine.')
+        make_desktop(appl/'parentpilot-netflix.desktop','Netflix', f'{browser} --no-first-run --app=https://www.netflix.com/',str(Path('/usr/lib/parentpilot/icons/netflix.svg')),'Use a Kids profile and lock adult profiles. DRM requires Widevine.')
     autostart=home/'.config/autostart'; autostart.mkdir(parents=True,exist_ok=True)
     (autostart/'parentpilot.desktop').write_text('[Desktop Entry]\nType=Application\nName=ParentPilot Timer\nExec=/usr/bin/python3 -B /opt/max-family-control/max_desktop_supervisor.py\nTerminal=false\nOnlyShowIn=XFCE;\nX-GNOME-Autostart-enabled=true\n',encoding='utf8')
     # App hiding is per-child and cosmetic: scripts/keyboard shortcuts still exist.
