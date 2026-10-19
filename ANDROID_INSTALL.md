@@ -2,14 +2,15 @@
 
 ParentPilot `0.4.2-updates-preview` is a **native in-app parental dashboard**. It no longer launches a website for timer controls or viewing pictures. It remains a **developer preview** requiring real-phone testing.
 
-## Download the current native test APK
+## Download the permanently signed Android app
 
-1. Open [ParentPilot Android build results](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml).
-2. Open the latest successful run for the development branch.
-3. Under **Artifacts**, download **ParentPilot-Android-Updater-Debug-APK** and extract `app-debug.apk`. GitHub may require sign-in.
-4. Install the APK on an Android 8 or newer phone (allow installation from the chosen source when Android prompts you).
+Download **[ParentPilot-Android-v7.apk](https://github.com/shrek1802/ParentPilot/releases/download/v0.5.0-preview8/ParentPilot-Android-v7.apk)** from the [verified Preview 8 GitHub Release](https://github.com/shrek1802/ParentPilot/releases/tag/v0.5.0-preview8) and install it on Android 8 or newer.
 
-The package ID remains `uk.familycontrol.remote`, version code 7. **The installer may reject an in-place upgrade if the previous GitHub debug build was signed with a different key**. Same ID is necessary but not sufficient. A stable signing-key workflow is prepared for future updates; see [Android developer notes](android-app/README.md). Only uninstall the old **phone app** if needed; this does not change the laptop's ParentPilot setup.
+This build was checked in GitHub Actions: application ID `uk.familycontrol.remote`, version code **7**, and SHA-256 signing certificate matching the permanent encrypted repository fingerprint. **Do not install old DEBUG builds on a new family phone.**
+
+If an earlier temporary DEBUG APK is installed, Android may require uninstalling **only the old phone app once** because its certificate differs. Installing this permanently signed APK establishes the signing identity for subsequent updates. Every later APK must retain this same signing certificate and have a higher version code. The Linux laptop, accounts, PIN and pictures are unaffected. See [Android developer notes](android-app/README.md).
+
+This remains a development preview, not a Play Store release. Preview 8 itself does not trigger Android's automatic stable-update checker; future stable releases will, once they carry properly signed, higher-version APKs.
 
 ## Connect to the laptop
 
