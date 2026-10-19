@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputType
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -87,6 +88,15 @@ class MainActivity : Activity() {
             setBackgroundColor(navy)
         }
         scroll.addView(container)
+        // Android 15+ enforces edge-to-edge layout: keep controls clear of
+        // system status and navigation bars, including on Android 16 phones.
+        if (Build.VERSION.SDK_INT >= 35) {
+            scroll.setOnApplyWindowInsetsListener { _, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                container.setPadding(18.dp(), 16.dp() + bars.top, 18.dp(), 30.dp() + bars.bottom)
+                insets
+            }
+        }
         setContentView(scroll)
         showConnection()
     }
@@ -448,12 +458,38 @@ class MainActivity : Activity() {
             parent.addView(text("No pictures saved yet.", 14f, muted))
             return
         }
-        for (pic in pictures) {
+        for ((index, pic) in pictures.withIndex()) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(0, 8.dp(), 0, 12.dp())
             }
             row.addView(text(pic.time, 15f))
+            if (index < 6) {
+                val thumbnail = ImageView(this).apply {
+                    adjustViewBounds = true
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = "Tap to enlarge saved screenshot"
+                    setOnClickListener {
+                        val api = client ?: return@setOnClickListener
+                        background({ api.jpeg(pic.id) }) { result ->
+                            result.onSuccess { openPictureViewer(it, pic.time) }
+                        }
+                    }
+                }
+                row.addView(thumbnail, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 140.dp()
+                ))
+                val api = client
+                if (api != null) background({ api.jpeg(pic.id) }) { result ->
+                    result.onSuccess { bytes ->
+                        if (client === api) {
+                            val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                            val image = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                            if (image != null) thumbnail.setImageBitmap(image)
+                        }
+                    }
+                }
+            }
             button(row, "View / zoom saved picture") {
                 val api = client ?: return@button
                 background({ api.jpeg(pic.id) }) { result ->
