@@ -8,6 +8,7 @@ package digest and metadata, backs up files, and verifies the service after upda
 """
 import json
 import os
+import grp
 import signal
 from pathlib import Path
 import pwd
