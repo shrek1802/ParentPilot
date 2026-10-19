@@ -13,6 +13,12 @@ ParentPilot Android is a **native Kotlin app** for controlling a ParentPilot Lin
 
 Screenshot viewing must already be enabled on the child laptop. Native mode uses the existing authenticated ParentPilot actions; **an existing working laptop does not need to be reinstalled**. Newer laptop services also provide a typed JSON status endpoint; the app automatically falls back to the existing browser-dashboard-compatible service for older installations.
 
+## Automatic update notices
+
+On login, ParentPilot checks published GitHub Releases and shows a notice on Home if a newer Android version is available. Open **More → Software updates** to read the release notes, manually check, choose Stable (default) or Preview, and install with Android's own approval dialog.
+
+Downloads are checked against the published SHA-256 digest and verified for the exact Android app ID, newer version code and **matching installed signing certificate**. Releases from temporary GitHub Actions artifacts do not qualify. The app never installs without Android and parent approval. See [the update guide](../docs/UPDATES.md).
+
 ## One-time security check for local HTTPS
 
 ParentPilot's local HTTPS certificate is self-signed. Before sending the PIN, the app shows its **SHA-256 certificate fingerprint**. On the Linux laptop, open an adult administrator terminal and compare it with:
