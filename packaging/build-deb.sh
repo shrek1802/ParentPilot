@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview6
+VERSION=0.5.0~preview7
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -57,6 +57,37 @@ install -m 0644 "$ROOT/packaging/parentpilot/youtube.svg" "$STAGING/usr/lib/pare
 install -m 0644 "$ROOT/packaging/parentpilot/netflix.svg" "$STAGING/usr/lib/parentpilot/icons/netflix.svg"
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
 install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
+# Parent-only updater: read-only version checks, privileged verified DEB upgrades.
+install -m 0644 "$ROOT/packaging/parentpilot/update_release.py" "$STAGING/usr/lib/parentpilot/update_release.py"
+install -m 0644 "$ROOT/packaging/parentpilot/updates_gui.py" "$STAGING/usr/lib/parentpilot/updates_gui.py"
+install -m 0755 "$ROOT/packaging/parentpilot/update_install.py" "$STAGING/usr/lib/parentpilot/update_install.py"
+cat > "$STAGING/usr/bin/parentpilot-updates" <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/parentpilot/updates_gui.py "$@"
+EOF
+chmod 0755 "$STAGING/usr/bin/parentpilot-updates"
+cat > "$STAGING/usr/share/applications/parentpilot-updates.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ParentPilot Updates
+Comment=Check for ParentPilot updates and review what has changed
+Exec=parentpilot-updates
+Icon=parentpilot
+Categories=Settings;System;
+Terminal=false
+StartupNotify=true
+EOF
+cat > "$STAGING/etc/xdg/autostart/parentpilot-update-check.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ParentPilot Update Check
+Comment=Show update notifications in adult administrator XFCE sessions only
+Exec=parentpilot-updates --notify
+OnlyShowIn=XFCE;
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+EOF
 install -m 0755 "$ROOT/packaging/parentpilot/setup_root.py" "$STAGING/usr/lib/parentpilot/setup-root"
 cat > "$STAGING/usr/bin/parentpilot-setup" <<'EOF'
 #!/bin/sh
@@ -91,7 +122,11 @@ set -e
 # NEVER provision the child from dpkg's root, non-graphical context.
 # The wizard gets explicit consent and PolicyKit auth instead.
 if [ "$1" = configure ]; then
-    echo 'ParentPilot installed. Open "ParentPilot Family Setup" from the applications menu to create a child account.'
+    if [ -n "${2:-}" ]; then
+        echo 'ParentPilot package upgraded. Existing child settings were preserved. Use ParentPilot Updates to deploy verified program files to configured laptops.'
+    else
+        echo 'ParentPilot installed. Open "ParentPilot Family Setup" from the applications menu to create a child account.'
+    fi
 fi
 exit 0
 EOF
