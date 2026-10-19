@@ -42,11 +42,21 @@ import java.util.concurrent.Executors
  * Supports existing parent HTML form API on installed Linux laptops.
  */
 class MainActivity : Activity() {
-    private val navy = Color.rgb(15, 23, 42)
-    private val slate = Color.rgb(30, 41, 59)
-    private val white = Color.rgb(248, 250, 252)
-    private val muted = Color.rgb(184, 202, 222)
-    private val teal = Color.rgb(37, 180, 178)
+    // Restrained dark palette; colours convey purpose, not just decoration.
+    private val navy = Color.rgb(10, 17, 30)
+    private val slate = Color.rgb(22, 33, 52)
+    private val elevated = Color.rgb(31, 46, 70)
+    private val white = Color.rgb(246, 249, 255)
+    private val muted = Color.rgb(159, 177, 201)
+    private val teal = Color.rgb(46, 199, 181)
+    private val green = Color.rgb(63, 210, 156)
+    private val amber = Color.rgb(242, 170, 83)
+    private val red = Color.rgb(246, 107, 120)
+    private val blue = Color.rgb(104, 163, 252)
+    private lateinit var shell: LinearLayout
+    private lateinit var nav: LinearLayout
+    private var selectedTab = 0
+    private var childStatus: TextView? = null
     private lateinit var container: LinearLayout
     private lateinit var scroll: ScrollView
     private val uiHandler = Handler(Looper.getMainLooper())
@@ -82,59 +92,132 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         manager = getSystemService(NSD_SERVICE) as NsdManager
-        scroll = ScrollView(this)
+        shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(navy)
+        }
+        scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        }
         container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(18.dp(), 16.dp(), 18.dp(), 30.dp())
+            setPadding(20.dp(), 14.dp(), 20.dp(), 30.dp())
             setBackgroundColor(navy)
         }
         scroll.addView(container)
-        // Android 15+ enforces edge-to-edge layout: keep controls clear of
-        // system status and navigation bars, including on Android 16 phones.
+        shell.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(12.dp(), 9.dp(), 12.dp(), 8.dp())
+            background = roundShape(slate, 0)
+            visibility = View.GONE
+        }
+        shell.addView(nav, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
         if (Build.VERSION.SDK_INT >= 35) {
-            scroll.setOnApplyWindowInsetsListener { _, insets ->
+            shell.setOnApplyWindowInsetsListener { _, insets ->
                 val bars = insets.getInsets(WindowInsets.Type.systemBars())
-                container.setPadding(18.dp(), 16.dp() + bars.top, 18.dp(), 30.dp() + bars.bottom)
+                container.setPadding(20.dp(), 14.dp() + bars.top, 20.dp(), 30.dp())
+                nav.setPadding(12.dp(), 8.dp(), 12.dp(), 8.dp() + bars.bottom)
                 insets
             }
         }
-        setContentView(scroll)
+        setContentView(shell)
         showConnection()
     }
+
+    private fun roundShape(color: Int, radius: Int = 17, stroke: Int? = null): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius.dp().toFloat()
+            stroke?.let { setStroke(1.dp(), it) }
+        }
+
+    private fun gradientCard(): GradientDrawable = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        intArrayOf(Color.rgb(36, 64, 100), slate)
+    ).apply { cornerRadius = 22.dp().toFloat() }
 
     private fun text(value: String, size: Float = 16f, color: Int = white): TextView =
         TextView(this).apply {
             text = value
             textSize = size
             setTextColor(color)
-            setPadding(0, 5.dp(), 0, 8.dp())
+            includeFontPadding = true
+            setPadding(0, 3.dp(), 0, 5.dp())
         }
 
-    private fun title(value: String) = text(value, 21f).apply {
-        setTypeface(null, android.graphics.Typeface.BOLD)
+    private fun title(value: String): TextView = text(value, 20f).apply {
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
     }
 
-    private fun panel(): LinearLayout = LinearLayout(this).apply {
+    private fun caption(value: String, color: Int = muted): TextView = text(value, 12f, color)
+
+    private fun panel(gradient: Boolean = false): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(15.dp(), 13.dp(), 15.dp(), 16.dp())
-        background = GradientDrawable().apply { setColor(slate); cornerRadius = 16.dp().toFloat() }
+        setPadding(18.dp(), 16.dp(), 18.dp(), 18.dp())
+        background = if (gradient) gradientCard() else roundShape(slate, 20)
         container.addView(this, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = 14.dp() })
     }
 
-    private fun button(parent: LinearLayout, label: String, action: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            isAllCaps = false
-            minHeight = 50.dp()
-            setTextColor(Color.WHITE)
-            backgroundTintList = android.content.res.ColorStateList.valueOf(teal)
-            setOnClickListener { action() }
-            parent.addView(this, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 7.dp() })
+    /** Buttons are purpose-coloured; subdued secondary controls are never teal blocks. */
+    private fun button(
+        parent: LinearLayout, label: String,
+        variant: String = "primary", action: () -> Unit
+    ): Button = Button(this).apply {
+        text = label
+        isAllCaps = false
+        textSize = 14f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        minHeight = 48.dp()
+        minimumHeight = 48.dp()
+        setPadding(11.dp(), 8.dp(), 11.dp(), 8.dp())
+        backgroundTintList = null
+        stateListAnimator = null
+        val fill = when (variant) {
+            "success" -> green
+            "warning" -> amber
+            "danger" -> red
+            "secondary" -> elevated
+            "outline" -> slate
+            else -> teal
         }
+        background = roundShape(fill, 13, if (variant == "outline") Color.rgb(72, 94, 122) else null)
+        setTextColor(if (variant in setOf("success", "warning", "primary")) navy else white)
+        setOnClickListener { action() }
+        parent.addView(this, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = 7.dp() })
+    }
+
+    private fun chip(parent: LinearLayout, label: String, selected: Boolean = false, action: () -> Unit): TextView =
+        text(label, 13f, if (selected) navy else white).apply {
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = roundShape(if (selected) teal else elevated, 12, if (selected) null else Color.rgb(57, 78, 108))
+            setPadding(7.dp(), 13.dp(), 7.dp(), 13.dp())
+            minHeight = 45.dp()
+            setOnClickListener { action() }
+            parent.addView(this, LinearLayout.LayoutParams(0, 46.dp(), 1f).apply {
+                marginStart = 3.dp()
+                marginEnd = 3.dp()
+            })
+        }
+
+    private fun row(parent: LinearLayout): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        parent.addView(this, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+    }
 
     private fun field(parent: LinearLayout, hint: String, value: String = "", numbers: Boolean = false): EditText =
         EditText(this).apply {
@@ -143,56 +226,66 @@ class MainActivity : Activity() {
             setText(value)
             setTextColor(white)
             setHintTextColor(muted)
+            textSize = 16f
+            setPadding(14.dp(), 13.dp(), 14.dp(), 13.dp())
+            background = roundShape(Color.rgb(13, 23, 39), 12, Color.rgb(69, 89, 118))
             inputType = if (numbers) InputType.TYPE_CLASS_NUMBER else
                 InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             parent.addView(this, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ))
+            ).apply { bottomMargin = 11.dp(); topMargin = 5.dp() })
         }
 
     private fun resetPage(subtitle: String) {
+        nav.visibility = View.GONE
         container.removeAllViews()
         scroll.scrollTo(0, 0)
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(ImageView(this).apply {
+        val header = row(container)
+        header.addView(ImageView(this).apply {
             setImageResource(R.drawable.parentpilot_icon)
-            contentDescription = "ParentPilot logo"
-        }, LinearLayout.LayoutParams(56.dp(), 56.dp()))
-        row.addView(title("  ParentPilot"), LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        container.addView(row)
-        container.addView(text(subtitle, 14f, muted))
+            contentDescription = "ParentPilot app icon"
+        }, LinearLayout.LayoutParams(50.dp(), 50.dp()))
+        val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(10.dp(), 0, 0, 0) }
+        details.addView(text("ParentPilot", 23f).apply {
+            typeface = android.graphics.Typeface.create("sans-serif-medium", 0)
+        })
+        details.addView(caption(subtitle))
+        header.addView(details)
+        container.addView(View(this), LinearLayout.LayoutParams(1, 19.dp()))
     }
 
     private fun showConnection() {
         pollActive = false
         stopDiscovery()
-        resetPage("Private family screen-time controls")
-        val connection = panel()
-        connection.addView(title("Connect to your child's laptop"))
-        connection.addView(text("Use the same Wi-Fi, or a private Tailscale connection. All controls stay inside this app.", 14f, muted))
-        val saved = preferences.getString("active_address", "")
-            .orEmpty().ifBlank { preferences.getString("local_ip", "").orEmpty() }
-        addressInput = field(connection, "192.168.1.100 or https://laptop.tailnet.ts.net", saved)
-        connection.addView(text("Parent PIN (never saved)", 14f, muted))
-        parentPinInput = field(connection, "Six-digit PIN", "", numbers = true).also {
+        resetPage("FAMILY CONTROL")
+        val connection = panel(gradient = true)
+        connection.addView(title("Welcome back"))
+        connection.addView(text("Connect securely to manage screen time and see your child's laptop.", 14f, muted))
+        val saved = preferences.getString("active_address", "").orEmpty()
+            .ifBlank { preferences.getString("local_ip", "").orEmpty() }
+        connection.addView(caption("LAPTOP ADDRESS"))
+        addressInput = field(connection, "192.168.1.100 or private Tailscale URL", saved)
+        connection.addView(caption("PARENT PIN"))
+        parentPinInput = field(connection, "Six-digit parent PIN", "", numbers = true).also {
             it.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
         }
-        connectionStatus = text("Enter the laptop address and parent PIN.", 14f, muted).also {
-            connection.addView(it)
-        }
-        button(connection, "Connect to ParentPilot") { connectFromFields() }
+        connectionStatus = caption("Your parent PIN is never stored on this phone.").also { connection.addView(it) }
+        button(connection, "Connect securely  →") { connectFromFields() }
+
         val wifi = panel()
-        wifi.addView(title("Find laptop on Wi-Fi"))
-        button(wifi, "Find nearby laptop") { scanWithPermission() }
+        wifi.addView(title("Find a nearby laptop"))
+        wifi.addView(caption("Both devices must be on the same trusted Wi-Fi network."))
+        button(wifi, "Scan Wi-Fi", "outline") { scanWithPermission() }
         deviceList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         wifi.addView(deviceList)
-        wifi.addView(text("Discovery works when both devices can reach one another on a private network.", 13f, muted))
+
         val note = panel()
-        note.addView(title("Local connection security"))
+        note.addView(title("Secure by design"))
         note.addView(text(
-            "For a local laptop's self-signed HTTPS certificate, check its SHA-256 fingerprint on the laptop the first time you connect. The app remembers the certificate fingerprint, not your PIN. If it changes, the connection is blocked until you verify it again.",
-            13f, muted))
+            "ParentPilot verifies your laptop's HTTPS certificate before the first local connection. " +
+            "If the certificate changes, you'll be asked to verify it again.",
+            13f, muted
+        ))
     }
 
     private fun normalizeAddress(raw: String): String? {
