@@ -88,15 +88,15 @@ def write_child_menu(home, youtube=True, netflix=True):
     menu_dir.mkdir(parents=True, exist_ok=True)
     files = applications / 'parentpilot-files.desktop'
     files.write_text(
-        '[Desktop Entry]\\nType=Application\\nName=Files\\n'
-        'Exec=thunar\\nIcon=' + str(ICONS[11]) +
-        '\\nTerminal=false\\nCategories=Utility;\\n',
+        '[Desktop Entry]\nType=Application\nName=Files\n'
+        'Exec=thunar\nIcon=' + str(ICONS[11]) +
+        '\nTerminal=false\nCategories=Utility;\n',
         encoding='utf8')
     logout = applications / 'parentpilot-logout.desktop'
     logout.write_text(
-        '[Desktop Entry]\\nType=Application\\nName=Log out\\n'
-        'Exec=xfce4-session-logout\\nIcon=system-log-out\\n'
-        'Terminal=false\\nCategories=System;\\n',
+        '[Desktop Entry]\nType=Application\nName=Log out\n'
+        'Exec=xfce4-session-logout\nIcon=system-log-out\n'
+        'Terminal=false\nCategories=System;\n',
         encoding='utf8')
     names = ['parentpilot-browser.desktop', 'parentpilot-files.desktop']
     if youtube:
@@ -117,9 +117,9 @@ def write_child_menu(home, youtube=True, netflix=True):
     ET.indent(root, space='  ')
     menu = menu_dir / 'parentpilot.menu'
     menu.write_bytes(
-        (b'<?xml version="1.0" encoding="UTF-8"?>\\n'
+        (b'<?xml version="1.0" encoding="UTF-8"?>\n'
          b'<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN" '
-         b'"http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">\\n'
+         b'"http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">\n'
          + ET.tostring(root, encoding='utf-8')))
     return menu
 
