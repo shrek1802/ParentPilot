@@ -1,4 +1,4 @@
-# ParentPilot Linux installer — Preview 7
+# ParentPilot Linux installer — Preview 15
 
 ParentPilot provides a guided setup for family screen-time controls on Debian-based Linux desktops using **XFCE on X11**.
 
@@ -110,3 +110,28 @@ bash packaging/build-deb.sh
 CI checks the Python syntax, application logic, mock compatibility scenarios and DEB contents. It **cannot establish that the screen overlay, screenshot capture or installer will behave correctly on every real laptop**.
 
 The project is in a public **testing stage**. Update mechanisms need on-device testing and independent signature verification before a stable public release. Please report results without including child-identifying information. The [project homepage and overview](../README.md) describe the current features and release status.
+
+## Optional free Games & Learning (Preview 15)
+
+ParentPilot includes a catalogue of **eight optional free games** available through Debian/Ubuntu/Mint APT repositories. It makes no Flatpak, AppImage or untrusted downloads. No games are selected by default.
+
+| Game | APT package | Purpose |
+| --- | --- | --- |
+| GCompris | `gcompris-qt` | Reading, counting, memory and problem-solving activities. Larger package. |
+| Tux Maths | `tuxmath` | Arcade arithmetic |
+| Tux Typing | `tuxtype` | Keyboard skills |
+| Tux Paint | `tuxpaint` | Drawing and creativity |
+| Pingus | `pingus` | Lemmings-style reasoning puzzles |
+| SuperTux | `supertux` | Lightweight 2D platforming |
+| Frozen Bubble | `frozen-bubble` | Colour-matching puzzles |
+| GNOME Sudoku | `gnome-sudoku` | Number logic |
+
+The Dell Inspiron N5110 i3/6GB class of laptops should run most of these comfortably, although driver age and 2D/Qt rendering matter. Game selection does not remove Office, VLC, XFCE utilities, or other normal learning software.
+
+**New installations:** Choose individual games on the wizard's **Parental controls & apps** step. On confirmation, ParentPilot provisions the child account and timer first. It then asks APT to install only the selected games, each from the OS's configured repositories. An offline repository error does not prevent the child account/timer setup from completing; the installer reports the failed games.
+
+**Already configured laptop:** From the **adult administrator** account, open **ParentPilot Games & Learning** in Applications → Settings or run `parentpilot-games`. Select games and approve the administrator password prompt. This does **not** rerun Family Setup or change passwords, accounts, PIN, allowance, or screenshots. Already-installed games are shown as such and are never reinstalled or removed by this utility.
+
+APT installs the selected packages **system-wide**, as normal desktop programs. They appear in the child's standard XFCE Applications menu (usually Games or Education), and the parent can run them too. Game play counts towards the normal ParentPilot screen-time allowance. Updates to these games are managed through Mint's normal package manager.
+
+**Important:** APT requires an internet connection and enabled distro repositories. Some optional titles may be unavailable on unusual Debian-based distributions; failed games are reported individually. Menu hiding of alternative web browsers is a cosmetic convenience, not a kernel-level restriction.
