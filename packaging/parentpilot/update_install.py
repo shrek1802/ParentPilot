@@ -186,8 +186,8 @@ def install(channel, expected_tag):
         backup = save_snapshot()
         try:
             print('Installing verified DEB through APT…', flush=True)
-            cmd('apt-get', 'install', '-y', '--no-install-recommends',
-                str(archive), timeout=300)
+            cmd('apt-get', 'install', '-y', '--no-remove',
+                '--no-install-recommends', str(archive), timeout=300)
             deploy_program_files()
             health_check()
         except Exception:
