@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
+import java.io.File
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -87,6 +88,11 @@ class MainActivity : Activity() {
     private var pollActive = false
     private var busy = false
     private var pendingSaveBytes: ByteArray? = null
+    private var availableUpdate: ParentPilotUpdate? = null
+    private var updateNotice: String = "Check for published updates."
+    private var updatePanel: LinearLayout? = null
+    private var updateChecking = false
+    private var updateInstalling = false
 
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
@@ -402,6 +408,7 @@ class MainActivity : Activity() {
         pollActive = true
         lastGalleryKey = ""
         renderTab(info)
+        checkForUpdates(false)
         uiHandler.postDelayed({ refreshLoop() }, 1600)
     }
 
@@ -425,6 +432,7 @@ class MainActivity : Activity() {
         gallery = null
         childStatus = null
         connectionBadge = null
+        updatePanel = null
         if (selectedTab == 2) previousScreenStatus = ""
         val heading = when (selectedTab) {
             1 -> "Manage time"
@@ -563,6 +571,13 @@ class MainActivity : Activity() {
     }
 
     private fun drawHomePage(info: ParentState) {
+        val update = availableUpdate
+        if (update != null) {
+            val card = panel()
+            card.addView(badge("Update available · Android v" + update.versionCode, "info"))
+            card.addView(caption("An official ParentPilot release is available."))
+            button(card, "Review update", "secondary") { navigateTo(3) }
+        }
         drawHero(info)
         val controls = panel()
         controls.addView(title("Quick actions"))
@@ -670,6 +685,8 @@ class MainActivity : Activity() {
         device.addView(text(client?.origin.orEmpty(), 13f))
         device.addView(badge("Secure connection", "success"))
         button(device, "Refresh connection", "outline") { refreshNow() }
+        updatePanel = panel()
+        drawUpdateControls()
         val privacy = panel()
         privacy.addView(title("Privacy & safety"))
         privacy.addView(text("Your parent PIN is not stored in the app. " +
@@ -689,6 +706,86 @@ class MainActivity : Activity() {
             if (old != null) worker.execute { old.logout() }
         }
         account.addView(caption("ParentPilot · Native Android preview"))
+    }
+
+
+    private fun drawUpdateControls() {
+        val parent = updatePanel ?: return
+        if (selectedTab != 3) return
+        parent.removeAllViews()
+        parent.addView(title("Software updates"))
+        parent.addView(caption("Current Android version: " + packageManager.getPackageInfo(
+            packageName, 0).versionName))
+        parent.addView(text(updateNotice, 13f, muted))
+        val update = availableUpdate
+        if (update != null) {
+            parent.addView(badge("New version · " + update.tag, "success"))
+            parent.addView(caption("WHAT'S NEW"))
+            parent.addView(text(update.changes.ifBlank {
+                "The release does not include detailed update notes."
+            }.take(1800), 13f))
+            button(parent, "Download and install update", "success") { installAndroidUpdate() }
+            parent.addView(caption("Android will ask permission before installing. " +
+                "The APK must have the same ParentPilot app ID and signing certificate."))
+        }
+        button(parent, "Check for updates", "outline") { checkForUpdates(true) }
+        parent.addView(caption("Only published stable GitHub Releases are shown. " +
+            "Preview builds and temporary CI artifacts are not offered as updates."))
+    }
+
+    private fun checkForUpdates(manual: Boolean) {
+        if (updateChecking) return
+        updateChecking = true
+        updateNotice = "Checking official ParentPilot releases…"
+        drawUpdateControls()
+        background(
+            { ParentPilotUpdates.check(applicationContext) },
+            { result ->
+                updateChecking = false
+                result.onSuccess { update ->
+                    availableUpdate = update
+                    updateNotice = if (update == null) "You have the latest published stable version." else
+                        "Version " + update.versionCode + " is ready to review."
+                    if (selectedTab == 0 && update != null) state?.let { renderTab(it) }
+                    drawUpdateControls()
+                    if (manual && update == null) Toast.makeText(this,
+                        "ParentPilot is up to date.", Toast.LENGTH_SHORT).show()
+                }.onFailure {
+                    updateNotice = "Could not check updates: " + safeError(it)
+                    drawUpdateControls()
+                    if (manual) Toast.makeText(this, updateNotice, Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+    }
+
+    private fun installAndroidUpdate() {
+        val release = availableUpdate ?: return
+        if (updateInstalling) return
+        updateInstalling = true
+        updateNotice = "Downloading and verifying the official APK…"
+        drawUpdateControls()
+        background(
+            { ParentPilotUpdates.downloadAndVerify(applicationContext, release) },
+            { result ->
+                updateInstalling = false
+                result.onSuccess { file ->
+                    updateNotice = "APK verified. Android will request installation approval."
+                    drawUpdateControls()
+                    try {
+                        ParentPilotUpdates.requestInstall(this, file)
+                    } catch (e: Exception) {
+                        updateNotice = "Update requires approval: " + safeError(e)
+                        drawUpdateControls()
+                        Toast.makeText(this, updateNotice, Toast.LENGTH_LONG).show()
+                    }
+                }.onFailure {
+                    updateNotice = "Update blocked: " + safeError(it)
+                    drawUpdateControls()
+                    Toast.makeText(this, updateNotice, Toast.LENGTH_LONG).show()
+                }
+            }
+        )
     }
 
     private fun performMinutes(action: String, value: String) {
