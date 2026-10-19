@@ -1,0 +1,134 @@
+name: Finalize ParentPilot Preview 8 — permanently signed Android
+
+# Deliberately one-time maintenance workflow: replace the old DEBUG APK on
+# the already published Preview 8 release. Keep the successful Linux DEB.
+on:
+  push:
+    branches:
+      - feature/preview3-setup-screen-consent
+    paths:
+      - .github/workflows/replace-preview8-with-signed-android.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  finalize:
+    if: github.repository == 'shrek1802/ParentPilot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_CERT: ${{ secrets.PARENTPILOT_ANDROID_EXPECTED_CERT_SHA256 }}
+      TAG: v0.5.0-preview8
+      OLD_TAG: v0.5.0-preview7
+      SIGNED_RUN: '39300182707'
+      LINUX_SHA: '6f3e78f828b5ee8b67d6a5c79e5d4bc4e381810be1de4cea4ccf21db7f0981d8'
+    steps:
+      - name: Verify original builds and published release
+        run: |
+          set -euo pipefail
+          for run in 39300182707 39296326300; do
+            test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.status')" = completed
+            test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.conclusion')" = success
+          done
+          test "$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease')" = true
+          test -n "$EXPECTED_CERT"
+      - name: Download final signed APK and current Linux DEB
+        run: |
+          set -euo pipefail
+          mkdir -p stage/android stage/linux publish
+          gh run download "$SIGNED_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Android-v7-PERMANENT-SIGNING-VERIFIED --dir stage/android
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'parentpilot_0.5.0.preview8_all.deb' --dir stage/linux
+          test -s stage/android/ParentPilot-Android-v7-SIGNED.apk
+          test -s stage/android/SHA256SUMS.txt
+          test -s stage/linux/parentpilot_0.5.0.preview8_all.deb
+          (cd stage/android && sha256sum -c SHA256SUMS.txt)
+          test "$(sha256sum stage/linux/parentpilot_0.5.0.preview8_all.deb | cut -d' ' -f1)" = "$LINUX_SHA"
+          test "$(dpkg-deb -f stage/linux/parentpilot_0.5.0.preview8_all.deb Package)" = parentpilot
+          test "$(dpkg-deb -f stage/linux/parentpilot_0.5.0.preview8_all.deb Version)" = '0.5.0~preview8'
+      - name: Verify correct Android package and permanent signing certificate
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'build-tools;35.0.0'
+          apk=stage/android/ParentPilot-Android-v7-SIGNED.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" |
+            grep -E "package: name='uk.familycontrol.remote' versionCode='7'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" \
+            > "$RUNNER_TEMP/parentpilot-cert.txt"
+          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/parentpilot-cert.txt" | head -1)"
+          got="$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          want="$(printf '%s' "$EXPECTED_CERT" | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test -n "$got"
+          test "$got" = "$want"
+      - name: Prepare release checksum manifest and updated release notes
+        run: |
+          set -euo pipefail
+          cp stage/linux/parentpilot_0.5.0.preview8_all.deb publish/
+          cp stage/android/ParentPilot-Android-v7-SIGNED.apk publish/ParentPilot-Android-v7.apk
+          (cd publish && sha256sum parentpilot_0.5.0.preview8_all.deb ParentPilot-Android-v7.apk > SHA256SUMS.txt)
+          cat > "$RUNNER_TEMP/preview8-notes.md" <<'NOTES'
+          # ParentPilot Preview 8 — Linux and permanently signed Android
+
+          **Development preview:** for family testing, not yet a hardened child-safety product.
+
+          ## Download
+          - **Linux Mint XFCE/X11:** parentpilot_0.5.0.preview8_all.deb (internal Debian version 0.5.0~preview8).
+          - **Android:** ParentPilot-Android-v7.apk — permanently signed first-install APK (native v0.4.2, versionCode 7, same uk.familycontrol.remote app ID).
+          - SHA256SUMS.txt contains current checksums for both downloads.
+
+          ## Linux
+          Fresh-install guided family wizard, custom child panel with Chromium, selected supervised YouTube/YouTube Kids, optional Netflix, screen-time controls and adult-only ParentPilot Updates. Child account, PIN, timers and saved screenshots are preserved by the intended managed upgrade process; test this before handing a laptop to another household. The Linux DEB is unchanged from the verified Preview 8 release.
+
+          ## Android
+          Native dashboard with screen-time controls, screenshot viewer and gallery, plus checks for future updates. **This Android build uses the permanent ParentPilot signing certificate**, independently verified in GitHub Actions against the encrypted expected fingerprint. Every future normal update must be signed by the SAME private key and use a higher Android versionCode. This Preview release is not an automatically discoverable stable Android update: the in-app updater searches stable GitHub Releases only.
+
+          If the phone already has a temporary debug APK, uninstall only that old Android app once and install this signed APK. New phones should install the signed APK directly. Android still requests the parent's approval for future installs.
+
+          Not Play Store tested or independently audited. Never send the private keystore or password in chat or include them in the public repository.
+          NOTES
+      - name: Upload verified signed APK before touching old assets
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" publish/ParentPilot-Android-v7.apk \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '.assets[].name' | grep -Fx 'ParentPilot-Android-v7.apk'
+      - name: Replace stale checksum manifest and release notes
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --notes-file "$RUNNER_TEMP/preview8-notes.md"
+      - name: Confirm final release digests before deleting old previews
+        run: |
+          set -euo pipefail
+          signed="$(sha256sum publish/ParentPilot-Android-v7.apk | cut -d' ' -f1)"
+          remote="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '.assets[] | select(.name == "ParentPilot-Android-v7.apk") | .digest')"
+          test "$remote" = "sha256:$signed"
+          remote_linux="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '.assets[] | select(.name == "parentpilot_0.5.0.preview8_all.deb") | .digest')"
+          test "$remote_linux" = "sha256:$LINUX_SHA"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP"
+          (cd publish && cmp SHA256SUMS.txt "$RUNNER_TEMP/SHA256SUMS.txt")
+      - name: Clean up superseded DEBUG APK and Preview 7 release
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '.assets[].name' | grep -Fxq 'ParentPilot-Android-v7-DEBUG.apk'; then
+            gh release delete-asset "$TAG" ParentPilot-Android-v7-DEBUG.apk \
+              --repo "$GITHUB_REPOSITORY" --yes
+          fi
+          if gh release view "$OLD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$OLD_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url: .url, prerelease: .isPrerelease, assets: [.assets[].name]}'
