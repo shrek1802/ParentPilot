@@ -1,0 +1,97 @@
+name: Publish ParentPilot Linux Preview 10
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths:
+      - '.github/workflows/publish-verified-preview10.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Confirm tested Preview 10 build and immutable source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run="39306808905"
+          repo="$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = "cdef736c7d352601b74da8f3d6cbccb0c583bd2f"
+
+      - name: Download and verify Preview 10 DEB
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39306808905 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview10 \
+            --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview10_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview10'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/update_install.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/updates_gui.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/child_panel.py'
+          cp "$deb" publish/parentpilot_0.5.0.preview10_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+
+      - name: Document corrected update process
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 10 — Reliable updater
+
+          This is a **Linux Mint XFCE/X11 preview** for parents testing a fresh ParentPilot installation.
+
+          ### What changed
+          - **False "child is signed in" warnings fixed:** logind sometimes keeps a closing session after the child has logged out. ParentPilot now checks logind's session state and whether the child's XFCE lock or desktop processes remain. An actively running, or merely switched-away, child desktop still blocks the update.
+          - **Small laptop layouts fixed:** buttons are anchored inside the updater window, release notes scroll and the window sizes itself for the available desktop space. Tested by automated X11 display simulation at 800×480 and 1024×600 with high font scaling.
+          - Additional checks prevent upgrades if the child session cannot be safely identified.
+          - All Preview 9 improvements remain, including the cleaner lock screen, PIN focus, centred XFCE taskbar and six-character minimum for NEW child Linux login passwords.
+          - Child accounts, parent PIN hashes, screen-time settings, saved screenshots and local network credentials are preserved. Upgrades still require adult administrator approval and create a private backup.
+
+          ### Upgrade from Preview 8 or Preview 9
+          1. Sign in as the adult administrator. The child must be fully logged out, not just switched away.
+          2. Open **ParentPilot Updates**, choose **Preview** and **Check for updates**.
+          3. If the OLD updater says "child currently signed in" even after logout, use an adult terminal to check 'loginctl list-sessions'. After saving any open child work, run:
+               CHILD=$(sudo python3 -c 'import json; print(json.load(open("/etc/max-family-control/config.json"))["child"])')
+               sudo loginctl terminate-user "$CHILD"
+             This logs out the child account's remaining sessions but does not delete the account or parental settings.
+          4. On some old Preview 8/9 updater windows the Install button may be clipped; hold Alt and drag the window upward to reveal its footer. This is fixed in Preview 10.
+          5. Approve the update, wait for success and sign the child back in to load the new panel and lock screen.
+
+          Existing installed ParentPilot should be upgraded through **ParentPilot Updates**, not by running Family Setup again.
+          Android remains unchanged; the permanently signed Android APK is still available under Preview 8.
+
+          CI tests passed. Real laptop testing is still required, particularly XFCE session timing and local PIN focus behaviour.
+          EOF
+
+      - name: Publish Preview 10 without removing previous tested releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview10 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Refusing to replace an already published Preview 10."
+            exit 1
+          fi
+          gh release create v0.5.0-preview10 \
+            publish/parentpilot_0.5.0.preview10_all.deb publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target cdef736c7d352601b74da8f3d6cbccb0c583bd2f \
+            --title "ParentPilot Linux Preview 10 - updater and child-session fixes" \
+            --notes-file "$RUNNER_TEMP/notes.md" --prerelease
+          gh release view v0.5.0-preview10 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url: .url, prerelease: .isPrerelease, assets: [.assets[].name]}'
