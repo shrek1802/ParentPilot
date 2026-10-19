@@ -1,0 +1,96 @@
+name: Publish ParentPilot Linux Preview 13
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths:
+      - '.github/workflows/publish-parentpilot-preview13.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify exact successful source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39319830072
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = "8929f063ad0a849b7a182484630b5b64cd77c64e"
+
+      - name: Download and verify tested DEB
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39319830072 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview13 --dir incoming
+          deb="incoming/parentpilot_0.5.0~preview13_all.deb"
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = "0.5.0~preview13"
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          for name in child_panel.py update_install.py updates_gui.py; do
+            dpkg-deb -c "$deb" | grep -F -q "/usr/lib/parentpilot/$name"
+          done
+          for name in browser.svg files.svg youtube.svg netflix.svg; do
+            dpkg-deb -c "$deb" | grep -F -q "/usr/lib/parentpilot/icons/$name"
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview13_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+
+      - name: Write update notes
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 13 — child menu and tray repair
+
+          **Development preview for Linux Mint XFCE/X11. Requires field testing on the actual laptop.**
+
+          ### What has changed
+          - Child's bottom-left ParentPilot button now opens a curated menu: **Family Chromium, Files, YouTube Kids or supervised YouTube, optional Netflix, and Log out**, rather than the full XFCE Settings/Office/System categories.
+          - Menu choice, icons, and layout are written both to the child-owned panel configuration and the active XFCE settings service during child login. No adult account or global XFCE menu is modified.
+          - Panel height 40 px; launcher icons limited to 28 px; system tray icon size set to 18 px.
+          - Digital clock condensed to **HH:MM**, instead of the date plus time crowding the right-hand tray.
+          - Previous versions' Files and app launcher icon repairs are retained.
+          - Previous fullscreen parent PIN focus, layout improvements, and parent-approved automatic child sign-out during updates remain.
+          - Does not change the child's Linux account, six-digit parent PIN, screen-time allowance, authenticated mobile access, or saved screenshots.
+
+          ### Upgrading an already-configured Preview 12 laptop
+          1. Sign into the adult administrator account, open ParentPilot Updates and select **Preview**.
+          2. Check for updates and confirm **Install update**; save any work before agreeing to automatic child sign-out.
+          3. Wait for the success message, then sign into the child account for the XFCE menu, icon, clock, and panel changes to apply.
+          4. Check the bottom-left menu contains only the family shortcuts; check the bottom-right tray icons and time fit; take a new picture for real-device verification.
+
+          ParentPilot hides unwanted apps from the visible menu, but this is **not a security boundary** against Linux desktop commands or app launching by other means. The Linux timer/parent PIN safeguards remain the separate enforcement mechanism.
+
+          The current signed Android app remains in the Preview 8 release. Older Linux releases remain available for comparison and recovery.
+          EOF
+
+      - name: Create one immutable Preview 13 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview13 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Preview 13 already exists; refusing to overwrite the published package."
+            exit 0
+          fi
+          gh release create v0.5.0-preview13 \
+            publish/parentpilot_0.5.0.preview13_all.deb publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 8929f063ad0a849b7a182484630b5b64cd77c64e \
+            --title "ParentPilot Linux Preview 13 - child menu and system tray" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
+          gh release view v0.5.0-preview13 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url: .url, prerelease: .isPrerelease, assets: [.assets[].name]}'
