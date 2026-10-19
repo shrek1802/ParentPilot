@@ -49,7 +49,13 @@ Repository: \`shrek1802/ParentPilot\`. A gated [GitHub Actions release workflow]
 - \`PARENTPILOT_SIGNING_KEY_PASSWORD\`
 - \`PARENTPILOT_ANDROID_EXPECTED_CERT_SHA256\`: hex fingerprint of the expected APK signing certificate
 
-Create the private keystore **on a trusted computer** with Android Studio or \`keytool\`, back it up securely, and set the secrets using **GitHub → Repository Settings → Secrets and variables → Actions**. Never add a signing key, passwords, tokens, or plaintext base64 keystore to the public repository or an issue. Losing the key prevents updating an app installed under that signer.
+**One-time signing setup:** On your own **trusted adult Linux computer**, install `gh`, Java keytool and OpenSSL. Download and inspect [scripts/setup-android-signing.sh](../scripts/setup-android-signing.sh), then run `bash setup-android-signing.sh` as your normal user (never sudo). The script creates the permanent JKS locally, signs in to GitHub in the browser if necessary, and uploads five GitHub Actions secrets over encrypted GitHub CLI connections. Re-running the script reuses the **original key**, never generates a replacement.
+
+**Back up the JKS and password file together** to encrypted offline storage. Do not share keys, passwords, tokens or base64 keystores through chat, GitHub issues or public repository files.
+
+**First signed build:** Open [Build ParentPilot Android APK](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml), click **Run workflow** and select the development branch. Manual builds fail if any signing secret is absent. Successful builds verify the fixed signer fingerprint and upload **ParentPilot-Android-v7-PERMANENTLY-SIGNED**. Regular push debug builds are explicitly labelled **NOT-UPDATABLE** and must not be given to a new family as a starting installation.
+
+Only a subsequently published official **stable GitHub Release** with a higher version code and this same signing key will appear in the app's update checker.
 
 The workflow compares the signed APK's certificate with the expected persistent fingerprint before publishing, builds the Linux DEB, runs tests, and publishes both assets with GitHub-generated SHA-256 digests and release notes.
 
