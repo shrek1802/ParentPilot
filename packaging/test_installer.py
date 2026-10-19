@@ -88,6 +88,46 @@ with tempfile.TemporaryDirectory() as d:
         cp.repair_child_panel()
     assert old_panel.is_file()
     assert cp.existing_parentpilot_panel(home)
+    # Actual launcher entries must have REAL newline characters, not literal
+    # backslash-n sequences; otherwise XFCE shows generic/corrupt icons.
+    for item in ['launcher-10/parentpilot-browser.desktop',
+                 'launcher-11/thunar.desktop',
+                 'launcher-12/parentpilot-youtube.desktop',
+                 'launcher-13/parentpilot-netflix.desktop']:
+        data = (home/'.config/xfce4/panel'/item).read_text()
+        assert data.startswith('[Desktop Entry]\n'), (item, repr(data[:80]))
+        assert '\nIcon=' in data, (item, repr(data))
+        assert r'\n' not in data, (item, repr(data))
+    thunar = (home/'.config/xfce4/panel/launcher-11/thunar.desktop').read_text()
+    assert 'Exec=thunar\n' in thunar
+    assert 'files.svg' in thunar
+    browser = (home/'.local/share/applications/parentpilot-browser.desktop').read_text()
+    assert 'Exec=true' in browser and 'browser.svg' in browser
+    assert (home/'.config/autostart/parentpilot-panel-refresh.desktop').is_file()
+
+    # Live corrections happen only in the child's own XFCE session, through
+    # xfconf. They must not affect adult/user-modified panels.
+    commands=cp.xfconf_commands_for_panel(home)
+    assert len(commands) >= 8
+    assert any('/panels/panel-1/plugin-ids' in c for c in commands)
+    assert all(c[0] == 'xfconf-query' and c[2] == 'xfce4-panel' for c in commands)
+    with patch.object(cp.os, 'geteuid', return_value=1000), \
+         patch.object(cp.os, 'getuid', return_value=1000), \
+         patch.object(cp.pwd, 'getpwuid', return_value=SimpleNamespace(pw_dir=str(home), pw_gid=1000)), \
+         patch.object(cp.shutil, 'which', return_value='/usr/bin/xfconf-query'), \
+         patch.dict(cp.os.environ, {'DISPLAY':':10',
+                                   'DBUS_SESSION_BUS_ADDRESS':'unix:path=/tmp/test-bus'}):
+        calls=[]
+        def run_fake(cmd, **kwargs):
+            calls.append(cmd)
+            return SimpleNamespace(returncode=0)
+        assert cp.apply_session_panel(home=home, runner=run_fake)
+        assert len(calls) == len(commands)
+        assert cp.apply_session_panel(home=home, runner=run_fake)
+        assert len(calls) == len(commands), 'Already-applied layouts must not flap at login'
+
+    with tempfile.TemporaryDirectory() as unrelated:
+        assert cp.xfconf_commands_for_panel(pathlib.Path(unrelated)) == []
 
 import py_compile
 for py in [R/'parentpilot/wizard.py',R/'parentpilot/preflight.py',R/'parentpilot/setup_root.py',R.parent/'desktop/max_desktop.py',R.parent/'desktop/parentpilot_lock_media.py',R.parent/'desktop/screen_view.py']:
