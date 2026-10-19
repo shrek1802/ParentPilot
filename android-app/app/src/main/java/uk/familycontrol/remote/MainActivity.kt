@@ -93,6 +93,7 @@ class MainActivity : Activity() {
     private var updatePanel: LinearLayout? = null
     private var updateChecking = false
     private var updateInstalling = false
+    private val previewUpdates: Boolean get() = preferences.getBoolean("preview_updates", false)
 
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
@@ -714,6 +715,13 @@ class MainActivity : Activity() {
         if (selectedTab != 3) return
         parent.removeAllViews()
         parent.addView(title("Software updates"))
+        parent.addView(caption(if (previewUpdates) "Channel: Preview (testing)" else "Channel: Stable"))
+        button(parent,
+            if (previewUpdates) "Switch to stable updates" else "Include preview updates", "outline") {
+            preferences.edit().putBoolean("preview_updates", !previewUpdates).apply()
+            availableUpdate = null
+            checkForUpdates(true)
+        }
         parent.addView(caption("Current Android version: " + packageManager.getPackageInfo(
             packageName, 0).versionName))
         parent.addView(text(updateNotice, 13f, muted))
@@ -729,8 +737,8 @@ class MainActivity : Activity() {
                 "The APK must have the same ParentPilot app ID and signing certificate."))
         }
         button(parent, "Check for updates", "outline") { checkForUpdates(true) }
-        parent.addView(caption("Only published stable GitHub Releases are shown. " +
-            "Preview builds and temporary CI artifacts are not offered as updates."))
+        parent.addView(caption("Only official published GitHub Releases are used. " +
+            "Preview releases require opting in; temporary CI builds never count as updates."))
     }
 
     private fun checkForUpdates(manual: Boolean) {
@@ -739,7 +747,7 @@ class MainActivity : Activity() {
         updateNotice = "Checking official ParentPilot releases…"
         drawUpdateControls()
         background(
-            { ParentPilotUpdates.check(applicationContext) },
+            { ParentPilotUpdates.check(applicationContext, previewUpdates) },
             { result ->
                 updateChecking = false
                 result.onSuccess { update ->
