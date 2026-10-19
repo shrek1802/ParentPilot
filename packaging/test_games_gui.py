@@ -5,6 +5,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'parentpilot'))
 
 import games_gui
+from unittest.mock import patch
+from types import SimpleNamespace
+
+# Preview 15 would silently return here: /etc/max-family-control is 0750
+# root:maxfamily and the non-root administrator cannot stat the config
+# or managed-install marker. The GUI must not read either protected file.
+assert 'parentpilot_configured' not in games_gui.main.__code__.co_names
+called = []
+with patch.object(games_gui, 'adult_account', return_value=True), \
+     patch.object(games_gui, 'GamesGUI',
+                  return_value=SimpleNamespace(
+                      root=SimpleNamespace(mainloop=lambda: called.append('open')))):
+    games_gui.main()
+assert called == ['open'], 'Adult user must be able to launch the GUI'
+
+# The child may use installed games but must not change software.
+with patch.object(games_gui, 'adult_account', return_value=False), \
+     patch.object(games_gui.messagebox, 'showinfo') as info:
+    games_gui.main()
+    assert info.call_count == 1
+    assert 'adult administrator' in info.call_args.args[1]
 games_gui.is_installed = lambda _package: False
 app = games_gui.GamesGUI()
 root = app.root
