@@ -174,7 +174,7 @@ object ParentPilotUpdates {
         require(Regex("[0-9a-f]{64}").matches(release.sha256))
         val directory = File(context.cacheDir, "updates")
         require(directory.isDirectory || directory.mkdirs()) { "Cannot prepare update cache." }
-        val partial = File(directory, "parentpilot-download.part")
+        val partial = File(directory, "parentpilot-download.apk")
         val final = File(directory, "parentpilot-update.apk")
         partial.delete()
         final.delete()
