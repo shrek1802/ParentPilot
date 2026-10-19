@@ -11,8 +11,8 @@ android {
         applicationId = "uk.familycontrol.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.4.0-native-preview"
+        versionCode = 6
+        versionName = "0.4.1-ui-preview"
     }
     // The applicationId is unchanged so Android recognises this as the same app.
     // In-place installation ALSO requires the previous APK signing certificate.
