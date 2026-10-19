@@ -20,9 +20,16 @@ ParentPilot helps parents manage time on a child's Linux laptop. It creates a se
 | Native Android app (preview) | Wi-Fi/Tailscale connection, parent PIN sign-in, time controls, screenshot viewer and gallery without opening a browser |
 | Optional screen pictures | Parent-requested, child-notified snapshots in the current experimental build; no continuous live stream |
 | Saved picture gallery | Explicitly save selected screen pictures, view or download them, or delete them; up to 20 saved pictures |
+| Safe updates (Preview) | Android offers verified in-app updates; the adult Linux desktop shows release notices and supports administrator-approved, backed-up upgrades | 
 | Reliable lock interface | A single-instance child supervisor avoids competing lock windows; transient service polling errors no longer dismiss an established lock |
 
 Screen-picture monitoring is **off by default** and requires an administrator to enable it during initial setup. When enabled, a parent must sign in before requesting or saving a picture. The child sees an on-screen notice before each capture. Unsaved pictures expire after two minutes; nothing is automatically recorded.
+
+## Updates for both apps
+
+Preview 7 adds an update-checking and parent-approved installation flow for Linux and Android. The Linux administrator gets a notification and **ParentPilot Updates** application; Android shows update notices in **More → Software updates** with release notes and an Android-approved installer. Both default to stable GitHub Releases, with optional previews.
+
+**Update requirements:** GitHub Releases must contain qualifying DEB/APK assets and SHA-256 digests, and Android updates require the **same permanent signing certificate** as the installed APK. A Linux first install must be made with the Preview 7-or-newer wizard to qualify for managed future upgrades; older customised setups remain blocked. No laptop or phone updates are installed silently. Read the [update and signing guide](docs/UPDATES.md) before publishing releases or transferring a laptop.
 
 ## Requirements and compatibility
 
@@ -38,7 +45,7 @@ For tested-versus-candidate environments and dependencies, see the [Linux instal
 
 ParentPilot is still a test release. **Use a spare machine or disposable virtual machine while evaluating the installer.** Current Debian packages are intended for **fresh setups only**, not upgrades of an existing configured parental-control installation. The installer is designed to refuse an existing setup rather than overwrite accounts, PINs or saved time.
 
-1. Open [Linux DEB builds on GitHub Actions](https://github.com/shrek1802/ParentPilot/actions/workflows/build-linux-deb.yml) and select an appropriate successful build. Preview 6 is available in the [draft development pull request](https://github.com/shrek1802/ParentPilot/pull/7); it is **not a stable release**.
+1. Open [Linux DEB builds on GitHub Actions](https://github.com/shrek1802/ParentPilot/actions/workflows/build-linux-deb.yml) and select an appropriate successful build. Preview 7 is available in the [draft development pull request](https://github.com/shrek1802/ParentPilot/pull/7); it is **not a stable release**.
 2. Under **Artifacts**, download the Linux DEB artifact (a ZIP containing a `.deb` file). GitHub may require sign-in to download CI artifacts.
 3. On an XFCE/X11 laptop, sign into the **adult administrator** account. Open the extracted `.deb` with the system package installer.
 4. From the applications menu, open **ParentPilot Family Setup**.
