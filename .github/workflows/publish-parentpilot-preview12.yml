@@ -1,0 +1,102 @@
+name: Publish ParentPilot Linux Preview 12
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths:
+      - '.github/workflows/publish-parentpilot-preview12.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful immutable source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=39318177422
+          repo="$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = fb88506a609e4c2acca7f977a9bf580946e2ba63
+      - name: Download and inspect tested DEB
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39318177422 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview12 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview12_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview12'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          for file in \
+            usr/lib/parentpilot/child_panel.py \
+            usr/lib/parentpilot/update_install.py \
+            usr/lib/parentpilot/updates_gui.py \
+            usr/lib/parentpilot/icons/browser.svg \
+            usr/lib/parentpilot/icons/files.svg \
+            usr/lib/parentpilot/icons/youtube.svg \
+            usr/lib/parentpilot/icons/netflix.svg \
+            usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            dpkg-deb -c "$deb" | grep -F -q "$file"
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview12_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Write real-world test release notes
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 12 — repaired child taskbar and icons
+
+          Development preview for Linux Mint XFCE/X11. Not a security-hardened kiosk.
+
+          ### What changed
+          - Fix browser, Files, YouTube and Netflix shortcut icons using bundled SVG assets rather than relying on different Linux Mint themes.
+          - Repair malformed Files launcher text that could show a generic icon.
+          - Apply the child's ParentPilot panel layout to the **active XFCE settings service** at child login, instead of relying on an offline configuration file that can be ignored or overwritten by cached xfconfd settings.
+          - Maintain one bottom taskbar with centred child app launchers and Wi-Fi/status icons plus clock on the right.
+          - The small time-left indicator uses the top-right position; it should not cover the bottom tray in a fresh child session.
+          - Includes the improved fullscreen parent PIN overlay, six-character minimum **new child Linux password** and smaller-screen updater layout from earlier previews.
+          - Includes the adult-approved option to sign out the child during future updates. When approved, the updater verifies the download and backs up configuration first, then signs out only the configured child user. This may close child apps without saving. The adult session stays open.
+          - Existing parent PIN, child account, timer allowance, and saved screenshots are preserved.
+
+          ### How to upgrade an existing Preview 10 child laptop
+          1. Sign in as the adult administrator. For the upgrade FROM Preview 10, first fully log the child out; older installed updaters do not yet include automatic sign-out.
+          2. Open ParentPilot Updates. Choose the Preview channel, Check for updates, review the notes, and approve Install update.
+          3. Let the update finish; the updater makes a protected backup and repairs only a recognised ParentPilot child panel.
+          4. Sign into the child account again. One child-session startup step re-applies the dock layout through XFCE.
+          5. Verify the icon positions, Wi-Fi and clock visibility and whether the time-left badge is at the top-right.
+
+          Future updates after installing Preview 12 can offer an explicit parent-confirmed **child sign-out and update** operation. Unsaved work may be lost if the child is still using apps. The safety check intentionally refuses to interrupt an unknown session.
+
+          Full end-to-end testing on this particular Dell laptop is still needed; CI tests cover source, simulated XFCE updates, and package contents. The permanently signed Android app is unchanged and is available in the Preview 8 release.
+          EOF
+      - name: Publish Preview 12 without overwriting fallback releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview12 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Preview 12 already published; refusing to overwrite files."
+            exit 1
+          fi
+          gh release create v0.5.0-preview12 \
+            publish/parentpilot_0.5.0.preview12_all.deb publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target fb88506a609e4c2acca7f977a9bf580946e2ba63 \
+            --title "ParentPilot Linux Preview 12 - taskbar and icon repair" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --prerelease
+          gh release view v0.5.0-preview12 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url: .url, prerelease: .isPrerelease, assets: [.assets[].name]}'
