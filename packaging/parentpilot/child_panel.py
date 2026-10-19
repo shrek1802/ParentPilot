@@ -188,7 +188,7 @@ def repair_child_panel():
 # process can keep the previous left-aligned layout after a package upgrade,
 # or overwrite edited XML when the child next signs in. Apply layout once in
 # the CHILD's own graphical session, through xfconf-query, after XFCE starts.
-LAYOUT_REVISION = 'centre-shortcuts-v3'
+LAYOUT_REVISION = 'centre-shortcuts-v4-icons'
 
 
 def xfconf_commands_for_panel(home):
