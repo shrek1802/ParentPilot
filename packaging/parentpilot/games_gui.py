@@ -16,7 +16,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from games_catalog import GAMES
-from games_install import is_installed, parentpilot_configured
+from games_install import is_installed
+import sys
 
 BG = '#101827'
 PANEL = '#1d2b43'
@@ -98,7 +99,13 @@ class GamesGUI:
                 last_category = category
                 tk.Label(body, text=category.upper(), bg=PANEL, fg=ACCENT,
                          font=('Sans', 10, 'bold')).pack(anchor='w', pady=(9, 3))
-            installed = is_installed(package)
+            # dpkg-query can be slow or unavailable on an unusual Linux
+            # desktop. Opening the window should still work; the privileged
+            # installer does the authoritative package check later.
+            try:
+                installed = is_installed(package)
+            except (OSError, subprocess.TimeoutExpired):
+                installed = False
             value = tk.BooleanVar(value=False)
             self.checks[game_id] = value
             label = title + ('  ✓ already installed' if installed else '')
@@ -182,13 +189,48 @@ class GamesGUI:
 
 
 def main():
+    # The ParentPilot marker and configuration live inside
+    # /etc/max-family-control (root:maxfamily, mode 0750). Ordinary adult
+    # sudo accounts cannot stat those files. In Preview 15 the startup code
+    # silently returned because Path.is_file() could not traverse that
+    # directory, even though ParentPilot was correctly configured.
+    #
+    # Only the privileged games_install backend may check the private marker
+    # AFTER the parent explicitly approves PolicyKit authentication.
     if not adult_account():
-        print('ParentPilot Games & Learning is available from the adult administrator account.')
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            messagebox.showinfo(
+                'ParentPilot Games & Learning',
+                'Please sign into the adult administrator account to install '
+                'games. Children can play installed games from the normal '
+                'Applications menu.',
+                parent=root,
+            )
+        finally:
+            root.destroy()
         return
-    if not parentpilot_configured():
-        print('Please complete ParentPilot Family Setup before managing games.')
+    try:
+        app = GamesGUI()
+    except Exception as exc:
+        # Do not silently vanish on Tk/font/dpkg failures. Keep diagnostics
+        # available for adults launching 'parentpilot-games' in a terminal.
+        print('ParentPilot Games & Learning could not start: ' + str(exc),
+              file=sys.stderr)
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            messagebox.showerror(
+                'ParentPilot Games & Learning',
+                'The games window could not open. Run parentpilot-games from '
+                'the adult account Terminal to see the error.\n\n'
+                + str(exc), parent=root,
+            )
+        finally:
+            root.destroy()
         return
-    GamesGUI().root.mainloop()
+    app.root.mainloop()
 
 
 if __name__ == '__main__':
