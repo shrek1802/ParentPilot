@@ -68,6 +68,18 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     prop(plugins,'plugin-22','string','clock')
     ET.indent(root,space='  ')
     ET.ElementTree(root).write(conf/'xfce4-panel.xml',encoding='utf-8',xml_declaration=True)
+    # Reapply the curated dock through the active XFCE settings service on
+    # the child's NEXT login. Updating the offline XML alone can be ignored
+    # by a cached xfconfd process.
+    startup = home/'.config/autostart'
+    startup.mkdir(parents=True, exist_ok=True)
+    (startup/'parentpilot-panel-refresh.desktop').write_text(
+        '[Desktop Entry]\nType=Application\n'
+        'Name=ParentPilot Panel Layout\n'
+        'Exec=/usr/bin/python3 /usr/lib/parentpilot/child_panel.py --apply-session\n'
+        'Terminal=false\nOnlyShowIn=XFCE;\n'
+        'X-GNOME-Autostart-enabled=true\nNoDisplay=true\n',
+        encoding='utf8')
     pdir=home/'.config/xfce4/panel'
     for number in launcher_ids:
         folder=pdir/f'launcher-{number}'; folder.mkdir(parents=True,exist_ok=True)
