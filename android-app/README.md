@@ -15,7 +15,7 @@ Screenshot viewing must already be enabled on the child laptop. Native mode uses
 
 ## Automatic update notices
 
-On login, ParentPilot checks published GitHub Releases and shows a notice on Home if a newer Android version is available. Open **More → Software updates** to read the release notes, manually check, choose Stable (default) or Preview, and install with Android's own approval dialog.
+On login, ParentPilot checks published GitHub Releases and shows a notice on Home if a newer Android version is available. Open **More → Software updates** to read the release notes, manually check, review a published stable update, and install with Android's own approval dialog. Debug and preview releases are not automatically offered.
 
 Downloads are checked against the published SHA-256 digest and verified for the exact Android app ID, newer version code and **matching installed signing certificate**. Releases from temporary GitHub Actions artifacts do not qualify. The app never installs without Android and parent approval. See [the update guide](../docs/UPDATES.md).
 
@@ -29,22 +29,43 @@ sudo openssl x509 -in /etc/max-family-control/server.crt -noout -fingerprint -sh
 
 Only choose **I verified it matches** when the fingerprint is identical. The app then pins that specific certificate for that laptop address; an unexpected certificate change blocks future connections. Unlike a browser that allows a click-through warning, the native app does **not** silently disable HTTPS verification. Tailscale `.ts.net` addresses use Android's normal trusted HTTPS certificate verification.
 
-## Same application ID and installation updates
+## Same application ID and permanent release signing
 
-**Package name stays `uk.familycontrol.remote`.** Version code is increased to 5 (`0.4.0-native-preview`).
+**Android package ID:** `uk.familycontrol.remote` (unchanged). **Current version:** code 7, `0.4.2-updates-preview`.
 
-An Android APK can update an installed APK **only when both the application ID and signing certificate match**. Older GitHub Actions debug builds used ephemeral signing keys, so an APK from a different run may fail to install over them despite having the same ID. The original signing private key cannot be recovered from an installed APK.
+Android permits in-place updates only if the new APK has the **same package ID, the same release signing certificate, and a higher version code**. The older GitHub Actions debug APKs use temporary signing certificates and cannot reliably update each other.
 
-For **future consistent signed releases**, configure the following as private GitHub Actions repository secrets:
+### One-time permanent signing setup — repository administrator
 
-- `PARENTPILOT_SIGNING_KEYSTORE_B64`: base64 of the **private** JKS keystore
-- `PARENTPILOT_SIGNING_STORE_PASSWORD`
-- `PARENTPILOT_SIGNING_KEY_ALIAS`
-- `PARENTPILOT_SIGNING_KEY_PASSWORD`
+On **your own trusted adult Linux computer**, install the GitHub CLI, Java keytool and OpenSSL:
 
-The Android build workflow then generates a separately labelled **ParentPilot-Android-Native-Signed-APK** using that same persistent key across versions. Keep the keystore and its passwords backed up securely outside GitHub. **Never commit, publish or send a private keystore in issues or chat.** If a pre-existing APK was signed with an unknown debug key, one uninstall/reinstall on the *Android phone* may be unavoidable before moving to a stable signing identity. This does **not** affect the child laptop or its timer/PIN/gallery. The phone's saved connection address may need re-entering.
+```bash
+sudo apt update && sudo apt install gh openjdk-17-jdk-headless openssl
+```
 
-Without the signing secrets, GitHub uploads **ParentPilot-Android-Native-Debug-APK** for testing. Its signer is **not** guaranteed to match previous runs.
+Download [the one-time signing script](../scripts/setup-android-signing.sh), inspect it, then run it as your normal adult user (not root):
+
+```bash
+bash setup-android-signing.sh
+```
+
+The script asks you to sign in to GitHub using your browser if needed, creates or reuses a private RSA signing key in `~/.local/share/parentpilot/signing/`, and uploads **five encrypted Actions secrets** directly to GitHub. It checks for an existing secret before generating a new key so you don't accidentally replace the release signing identity.
+
+**Back up both the private JKS and its password file to encrypted offline storage.** Never share them in a chat, upload them to the public repo or put them in a release.
+
+### Build an APK your friend's phone can keep updating
+
+After setting the secrets, open the [ParentPilot Android build workflow](https://github.com/shrek1802/ParentPilot/actions/workflows/build-android.yml), select **Run workflow** and choose the development branch. This manual workflow now:
+
+1. Requires the permanent signing secrets.
+2. Builds the Android release APK (not the temporary debug package).
+3. Verifies the app ID and version.
+4. Confirms the APK's signing certificate SHA-256 exactly matches the original permanent fingerprint.
+5. Uploads `ParentPilot-Android-v7-PERMANENTLY-SIGNED` with an APK and checksum.
+
+**Do not install the older `ParentPilot-Android-v7-DEBUG.apk` from Preview 8 on a new phone.** Install the permanently signed build once; subsequent versions signed by that same keystore, with higher version codes, can update without uninstalling. A public release can be published later using the gated [release workflow](../.github/workflows/publish-parentpilot-release.yml). Manual test artifacts are not automatically shown by the in-app updater; that updater looks at official stable GitHub Releases.
+
+If an old debug build is already installed, Android may require uninstalling **only the phone app once** before the first permanent-signed installation. The child's Linux laptop is unaffected.
 
 ## Build and limitations
 
