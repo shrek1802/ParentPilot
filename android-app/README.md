@@ -29,6 +29,12 @@ sudo openssl x509 -in /etc/max-family-control/server.crt -noout -fingerprint -sh
 
 Only choose **I verified it matches** when the fingerprint is identical. The app then pins that specific certificate for that laptop address; an unexpected certificate change blocks future connections. Unlike a browser that allows a click-through warning, the native app does **not** silently disable HTTPS verification. Tailscale `.ts.net` addresses use Android's normal trusted HTTPS certificate verification.
 
+## Current verified installation
+
+**[Download ParentPilot-Android-v7.apk (permanently signed)](https://github.com/shrek1802/ParentPilot/releases/download/v0.5.0-preview8/ParentPilot-Android-v7.apk)** from the [Preview 8 release](https://github.com/shrek1802/ParentPilot/releases/tag/v0.5.0-preview8). This is the first APK for friends and family to install, *not* the superseded temporary debug build.
+
+The official release includes the verified Linux Preview 8 DEB as well, with a joint `SHA256SUMS.txt`. GitHub Actions verified the Android package ID, version code 7 and permanent signing certificate. Stable in-app upgrades will become available when a newer **stable** signed Android release is published; the existing Preview 8 release is deliberately marked as a prerelease.
+
 ## Same application ID and permanent release signing
 
 **Android package ID:** `uk.familycontrol.remote` (unchanged). **Current version:** code 7, `0.4.2-updates-preview`.
@@ -63,7 +69,7 @@ After setting the secrets, open the [ParentPilot Android build workflow](https:/
 4. Confirms the APK's signing certificate SHA-256 exactly matches the original permanent fingerprint.
 5. Uploads `ParentPilot-Android-v7-PERMANENTLY-SIGNED` with an APK and checksum.
 
-**Do not install the older `ParentPilot-Android-v7-DEBUG.apk` from Preview 8 on a new phone.** Install the permanently signed build once; subsequent versions signed by that same keystore, with higher version codes, can update without uninstalling. A public release can be published later using the gated [release workflow](../.github/workflows/publish-parentpilot-release.yml). Manual test artifacts are not automatically shown by the in-app updater; that updater looks at official stable GitHub Releases.
+**Do not install an old `ParentPilot-Android-v7-DEBUG.apk` on a new phone.** Install the permanently signed build once; subsequent versions signed by that same keystore, with higher version codes, can update without uninstalling. A public release can be published later using the gated [release workflow](../.github/workflows/publish-parentpilot-release.yml). Manual test artifacts are not automatically shown by the in-app updater; that updater looks at official stable GitHub Releases.
 
 If an old debug build is already installed, Android may require uninstalling **only the phone app once** before the first permanent-signed installation. The child's Linux laptop is unaffected.
 
