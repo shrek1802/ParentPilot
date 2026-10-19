@@ -1,0 +1,95 @@
+name: Publish ParentPilot Linux Preview 9
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths:
+      - '.github/workflows/publish-verified-preview9.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify exact Preview 9 build passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run="39304589842"
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = "79525b99f3599059575721ccf9f85868e07dce09"
+
+      - name: Download and verify Linux package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39304589842 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview9 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview9_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview9'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/desktop/max_desktop.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/child_panel.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/update_install.py'
+          cp "$deb" publish/parentpilot_0.5.0.preview9_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+
+      - name: Write release notes
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 9
+
+          **Development preview for Linux Mint XFCE/X11**, not a hardened parental-control product.
+
+          ### Improvements
+          - Compact centred child panel with clear Wi-Fi/status icons and clock.
+          - The small Time left indicator moves to the top-right, away from the taskbar.
+          - Redesigned calmer fullscreen parent approval screen.
+          - Parent PIN entry receives keyboard focus when the lock appears, without Alt+Tab.
+          - Six-character minimum child account password in the new installation wizard. The six-digit parent PIN remains unchanged.
+          - Parent-approved upgrade backs up the existing panel XML, preserves users and settings, and repairs the known managed child panel under the child's own account.
+          - Existing child passwords, timer allowances, authentication tokens, saved screenshots and parent PIN remain unchanged.
+
+          ### Upgrade from Preview 8
+          1. Fully sign the child out and log into the adult administrator account.
+          2. Open ParentPilot Updates from Applications, select the Preview channel and Check for updates.
+          3. Review the notes, approve Install update, and wait for confirmation.
+          4. Sign the child in again to apply the updated taskbar and lock screen.
+          5. Test PIN input without Alt+Tab and check the taskbar layout.
+
+          This is not an automatic repair of already-open XFCE sessions. Do not run the first-time wizard over an existing account. The updater stores private backups under /var/backups/parentpilot.
+
+          The Android APK remains unchanged; the permanently signed Android v7 is still available in Preview 8. CI tests passed; full XFCE focus and panel behaviour need real-device verification.
+          EOF
+
+      - name: Publish Preview 9 without overwriting previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview9 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Preview 9 already exists. Refusing to overwrite."
+            exit 1
+          fi
+          gh release create v0.5.0-preview9 \
+            publish/parentpilot_0.5.0.preview9_all.deb publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 79525b99f3599059575721ccf9f85868e07dce09 \
+            --title "ParentPilot Linux Preview 9 - panel and lock-screen improvements" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --prerelease
+          gh release view v0.5.0-preview9 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url: .url, prerelease: .isPrerelease, assets: [.assets[].name]}'
