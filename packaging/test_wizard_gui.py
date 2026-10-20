@@ -38,7 +38,7 @@ try:
     assert gui.v['screen_view'].get() is True
     assert 'kodi' in gui.v
     assert not gui.v['kodi'].get()
-    assert len(gui.game_choices) == 8
+    assert len(gui.game_choices) == 15
     gui.step = 3
     gui.draw()
     root.update_idletasks()
