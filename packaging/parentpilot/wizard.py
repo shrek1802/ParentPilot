@@ -53,6 +53,7 @@ class Wizard:
             'autologin':tk.BooleanVar(value=bool(self.preflight.get('lightdm'))),
             'family_filter':tk.BooleanVar(value=True),
             'screen_view':tk.BooleanVar(value=False),
+            'kodi':tk.BooleanVar(value=False),
         }
         # Optional game choices are independent of child account/settings
         # and default OFF to avoid cluttering older laptops.
@@ -217,6 +218,11 @@ class Wizard:
                 self.lbl(self.body, category.upper(), 10, TEAL, True, pad=10)
             self.checked(self.body, title + ' — ' + description,
                          'game:' + game_id)
+        self.lbl(self.body, 'Media Players', 12, TEXT, True, pad=18)
+        self.checked(self.body, 'Kodi Media Centre — local videos, films, cartoons and music', 'kodi')
+        self.lbl(self.body, 'Kodi is optional and uses the official Linux Mint/Ubuntu APT package. '
+                 'VLC stays installed. No extra Kodi repositories or streaming add-ons are added.',
+                 10, SUB, wrap=625, pad=2)
 
     def review(self):
         self.lbl(self.body,'Ready to install',18,TEXT,True)
@@ -229,6 +235,8 @@ class Wizard:
         chosen = [title for game_id, title, *_ in GAMES if self.game_choices[game_id].get()]
         self.lbl(self.body, 'Free games: ' +
                  (', '.join(chosen) if chosen else 'None selected'), 10, SUB, wrap=620, pad=10)
+        self.lbl(self.body, 'Kodi Media Centre: ' +
+                 ('Install from APT' if self.v['kodi'].get() else 'Not selected'), 10, SUB, pad=5)
         self.lbl(self.body,'The child keeps the normal Linux Mint applications menu, '
                  'including VLC and other programs. Other browser shortcuts are hidden '
                  'from the menu, but menu hiding alone does not block browsers.',11,SUB,pad=15)
