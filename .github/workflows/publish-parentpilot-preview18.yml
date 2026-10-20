@@ -81,16 +81,20 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view v0.5.0-preview18 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::Preview 18 is already published. Refusing to overwrite."
-            exit 1
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview18 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 18 - optional Kodi Media Centre"
+          else
+            gh release create v0.5.0-preview18 \
+              publish/parentpilot_0.5.0.preview18_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target 709176a89531a1b144eb248bb268c26602ddffe4 \
+              --title "ParentPilot Linux Preview 18 - optional Kodi Media Centre" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
           fi
-          gh release create v0.5.0-preview18 \
-            publish/parentpilot_0.5.0.preview18_all.deb publish/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" \
-            --target 709176a89531a1b144eb248bb268c26602ddffe4 \
-            --title "ParentPilot Linux Preview 18 - optional Kodi Media Centre" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            --prerelease
           gh release view v0.5.0-preview18 --repo "$GITHUB_REPOSITORY" \
             --json url,isPrerelease,assets \
             --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
