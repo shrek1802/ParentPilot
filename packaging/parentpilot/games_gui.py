@@ -67,6 +67,7 @@ class GamesGUI:
         self.events = queue.Queue()
         self.running = False
         self.install_kind = 'apt'
+        self.kodi_action = 'install'
         self.total = 0
         self.completed = set()
         self.failed = []
@@ -217,7 +218,7 @@ class GamesGUI:
 
         # Explicit, non-destructive side-by-side Kodi trial. This action
         # never runs as part of selecting APT games or a ParentPilot update.
-        tk.Label(body, text='NEW KODI — SEPARATE TEST', bg=PANEL, fg=ACCENT,
+        tk.Label(body, text='OPTIONAL NEW KODI — FOR NEWER COMPUTERS', bg=PANEL, fg=ACCENT,
                  font=('Sans', 10, 'bold'), anchor='w').pack(fill='x', pady=(12, 5))
         test_panel = tk.Frame(body, bg=INSET, padx=11, pady=10)
         test_panel.pack(fill='x', pady=(0, 6))
@@ -225,10 +226,12 @@ class GamesGUI:
                  bg=INSET, fg=TEXT, font=('Sans', 10, 'bold'),
                  anchor='w').pack(fill='x')
         tk.Label(test_panel,
-                 text='Try a newer Kodi beside classic APT Kodi. Original Kodi, '
-                      'its settings and pinned taskbar icon are untouched. '
-                      'Separate library; sizeable Flatpak/runtime download. '
-                      'Test video and sound on the Dell before switching.',
+                 text='Recommended for newer, more powerful computers. '
+                      'On older laptops like the Dell, classic Kodi 20.5 may '
+                      'play local films more smoothly — keep using it if so. '
+                      'The newer Flatpak Kodi is optional, uses a separate '
+                      'library and needs a larger download. '
+                      'It never replaces classic Kodi or its taskbar icon.',
                  bg=INSET, fg=MUTED, font=('Sans', 9),
                  justify='left', anchor='w',
                  wraplength=max(225, width-105)).pack(fill='x', pady=(4, 8))
@@ -238,7 +241,14 @@ class GamesGUI:
             activebackground='#475569', activeforeground=TEXT,
             font=('Sans', 9, 'bold'), relief='flat',
             padx=10, pady=6)
-        self.kodi_test_btn.pack(anchor='w')
+        self.kodi_test_btn.pack(side='left', padx=(0, 8))
+        self.kodi_remove_btn = tk.Button(
+            test_panel, text='Remove newer Kodi test',
+            command=self.remove_test_kodi, bg='#334155', fg=TEXT,
+            activebackground='#475569', activeforeground=TEXT,
+            font=('Sans', 9, 'bold'), relief='flat',
+            padx=9, pady=6)
+        self.kodi_remove_btn.pack(side='left')
 
         self.root.after(120, self.poll)
 
@@ -285,6 +295,7 @@ class GamesGUI:
         self.status.set('Waiting for administrator password…')
         self.install_btn.configure(state='disabled')
         self.kodi_test_btn.configure(state='disabled')
+        self.kodi_remove_btn.configure(state='disabled')
         for check in self.row_checks:
             check.configure(state='disabled')
         self.activity_bar.pack(fill='x', pady=(4, 0))
@@ -350,6 +361,7 @@ class GamesGUI:
             parent=self.root):
             return
         self.install_kind = 'kodi'
+        self.kodi_action = 'install'
         self.start_progress(1)
         self.status.set('Preparing separate Kodi Flatpak test…')
         self.progress_info.set('Download and installation may take several minutes.')
@@ -370,11 +382,47 @@ class GamesGUI:
                 self.events.put(('kodi-error', str(exc)))
         threading.Thread(target=work, daemon=True).start()
 
+    def remove_test_kodi(self):
+        if self.running:
+            return
+        if not messagebox.askyesno(
+            'Remove only newer Kodi test',
+            'Remove the optional system-wide Kodi Flatpak test?\n\n'
+            'Your older APT Kodi, its settings, pinned taskbar icon, '
+            'and ParentPilot accounts and controls will stay unchanged.\n\n'
+            'The newer Kodi test shortcut will be removed too. '
+            'The Flatpak manager, shared runtimes and any separately saved '
+            'newer Kodi settings will be preserved.\n\n'
+            'Linux administrator approval is required.',
+            parent=self.root):
+            return
+        self.install_kind = 'kodi'
+        self.kodi_action = 'remove'
+        self.start_progress(1)
+        self.status.set('Preparing to remove the newer Kodi test…')
+        self.progress_info.set('Your classic Kodi and its taskbar icon are safe.')
+        self.set_detail('Waiting for administrator approval…')
+
+        def work():
+            try:
+                with subprocess.Popen(
+                    ['pkexec', '/usr/bin/python3', KODI_TEST_HELPER, '--remove-test'],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, errors='replace', bufsize=1
+                ) as process:
+                    for line in process.stdout:
+                        self.events.put(('kodi-line', line.rstrip('\r\n')))
+                    code = process.wait()
+                self.events.put(('kodi-done', code))
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                self.events.put(('kodi-error', str(exc)))
+        threading.Thread(target=work, daemon=True).start()
+
     def process_test_line(self, line):
         if line.startswith(KODI_STAGE):
             entry=line[len(KODI_STAGE):]
             stage, _, detail=entry.partition(':')
-            if stage in ('flatpak', 'remote', 'install', 'check', 'ready'):
+            if stage in ('flatpak', 'remote', 'install', 'check', 'ready', 'remove', 'removed'):
                 self.status.set(detail[:140])
                 self.add_detail(detail)
             return
@@ -386,32 +434,47 @@ class GamesGUI:
         self.activity_bar.pack_forget()
         self.install_btn.configure(state='normal')
         self.kodi_test_btn.configure(state='normal')
+        self.kodi_remove_btn.configure(state='normal')
         for item_id, check in zip(self.installed, self.row_checks):
             if not self.installed[item_id]:
                 check.configure(state='normal')
         if code == 0 and not explanation:
-            self.status.set('New Kodi test is ready')
             self.progress.configure(value=1)
-            self.progress_info.set('Sign into the child account and start Kodi (New Version Test).')
-            messagebox.showinfo(
-                'Kodi Flatpak trial installed',
-                'Open Applications → Multimedia → Kodi (New Version Test) '
-                'on the child account. Try menus, 720p video and sound. '
-                'Classic Kodi is still installed, with its own settings and taskbar icon.',
-                parent=self.root)
+            if self.kodi_action == 'remove':
+                self.status.set('Newer Kodi test removed')
+                self.progress_info.set('Classic Kodi is still installed and ready for local playback.')
+                messagebox.showinfo(
+                    'Newer Kodi test removed',
+                    'The newer Kodi Flatpak test and its ParentPilot test shortcut '
+                    'have been removed. Your existing classic Kodi, library and '
+                    'taskbar icon are unchanged.',
+                    parent=self.root)
+            else:
+                self.status.set('New Kodi test is ready')
+                self.progress_info.set('Sign into the child account and start Kodi (New Version Test).')
+                messagebox.showinfo(
+                    'Kodi Flatpak trial installed',
+                    'Open Applications → Multimedia → Kodi (New Version Test) '
+                    'on the child account. Try menus, 720p video and sound. '
+                    'Classic Kodi is still installed, with its own settings and taskbar icon.',
+                    parent=self.root)
         else:
-            self.status.set('New Kodi test could not be installed')
+            removing = self.kodi_action == 'remove'
+            self.status.set('Newer Kodi test could not be removed' if removing
+                            else 'New Kodi test could not be installed')
             self.progress_info.set('Classic Kodi remains available. Show details to diagnose.')
             if explanation:
                 self.add_detail(explanation)
             if not self.details_open:
                 self.toggle_details()
-            messagebox.showwarning('Kodi test was not installed',
-                                   'Kodi Flatpak could not be installed. '
-                                   'The existing APT Kodi has not been removed. '
+            messagebox.showwarning('Kodi test operation failed',
+                                   ('The newer Kodi test could not be removed. ' if removing
+                                    else 'The newer Kodi test could not be installed. ') +
+                                   'Classic APT Kodi is unchanged. '
                                    'See the activity details for the problem.',
                                    parent=self.root)
         self.install_kind = 'apt'
+        self.kodi_action = 'install'
 
     def process_line(self, line):
         if line.startswith(EVENT_PREFIX):
@@ -451,6 +514,7 @@ class GamesGUI:
         self.activity_bar.pack_forget()
         self.install_btn.configure(state='normal')
         self.kodi_test_btn.configure(state='normal')
+        self.kodi_remove_btn.configure(state='normal')
         for item_id, check in zip(self.installed, self.row_checks):
             if not self.installed[item_id]:
                 check.configure(state='normal')
