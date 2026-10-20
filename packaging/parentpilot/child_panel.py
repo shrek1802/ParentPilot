@@ -210,12 +210,16 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     plugin_ids=[1,17,18,*launcher_ids,19,21,22]
     array(panel,'plugin-ids','int',plugin_ids)
     plugins=prop(root,'plugins','empty','')
-    app_menu = prop(plugins,'plugin-1','string','applicationsmenu')
+    # Linux Mint XFCE's original full-featured Start menu is Whisker,
+    # not XFCE's basic applicationsmenu plugin.
+    app_menu = prop(plugins,'plugin-1','string','whiskermenu')
     prop(app_menu,'show-button-title','bool','false')
-    # Full default XFCE menu, including VLC, Office, settings, games etc.
-    prop(app_menu,'custom-menu','bool','false')
-    # Avoid an unknown XFCE menu glyph when the Mint icon theme differs.
-    prop(app_menu,'button-icon','string','/usr/share/icons/hicolor/64x64/apps/parentpilot.png')
+    # Whisker reads the full XDG applications menu, including search,
+    # favourites, categories, VLC, installed games and standard tools.
+    # Use the Linux Mint logo from the Mint icon theme where installed.
+    prop(app_menu,'button-icon','string','distributor-logo')
+    prop(app_menu,'show-button-icon','bool','true')
+    prop(app_menu,'show-button-title','bool','false')
     labels={10:'parentpilot-browser.desktop',11:'thunar.desktop',12:'parentpilot-youtube.desktop',13:'parentpilot-netflix.desktop',14:'parentpilot-vlc.desktop'}
     tasklist=prop(plugins,'plugin-17','string','tasklist')
     prop(tasklist,'grouping','uint',1)
@@ -314,7 +318,7 @@ def repair_child_panel():
 # process can keep the previous left-aligned layout after a package upgrade,
 # or overwrite edited XML when the child next signs in. Apply layout once in
 # the CHILD's own graphical session, through xfconf-query, after XFCE starts.
-LAYOUT_REVISION = 'full-apps-vlc-taskbar-v6'
+LAYOUT_REVISION = 'mint-whisker-start-menu-v7'
 
 
 def xfconf_commands_for_panel(home):
@@ -336,10 +340,14 @@ def xfconf_commands_for_panel(home):
         return []
     query = 'xfconf-query'
     commands = [
-        # Force the branded child menu icon even if xfconfd cached old settings.
+        # Replace the incorrect basic XFCE Applications menu with Mint's
+        # installed Whisker plugin, including its full searchable app list.
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1',
+         '-n', '-t', 'string', '-s', 'whiskermenu'],
         [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/button-icon',
-         '-n', '-t', 'string', '-s',
-         '/usr/share/icons/hicolor/64x64/apps/parentpilot.png'],
+         '-n', '-t', 'string', '-s', 'distributor-logo'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/show-button-icon',
+         '-n', '-t', 'bool', '-s', 'true'],
         [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/show-button-title',
          '-n', '-t', 'bool', '-s', 'false'],
         [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/size',
@@ -420,7 +428,21 @@ def apply_session_panel(home=None, runner=subprocess.run):
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     marker.write_text(LAYOUT_REVISION + '\n', encoding='ascii')
     marker.chmod(0o600)
-    print('ParentPilot dock centred through the active XFCE settings service.')
+    # Changing the plugin type on an already running XFCE panel requires a
+    # one-time panel reload. This only restarts the child's XFCE panel, not
+    # the window manager, ParentPilot timer, or other users' desktops.
+    try:
+        result = runner(['xfce4-panel', '--restart'], capture_output=True,
+                        text=True, timeout=12, check=False)
+        if result.returncode != 0:
+            marker.unlink(missing_ok=True)
+            print('DEFERRED: XFCE panel restart failed; retrying next login.')
+            return False
+    except (OSError, subprocess.TimeoutExpired):
+        marker.unlink(missing_ok=True)
+        print('DEFERRED: XFCE panel restart unavailable; retrying next login.')
+        return False
+    print('ParentPilot restored Linux Mint Whisker Start menu on child panel.')
     return True
 
 
