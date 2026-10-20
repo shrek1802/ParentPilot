@@ -1,0 +1,107 @@
+name: Publish ParentPilot Linux Preview 29
+# Publishes only the verified Preview 29 build artifact.
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview29.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39451159232
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 0b805fb6a4c14b92144a8891f5f21612ea6109e4
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39451159232 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview29 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview29_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview29'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/screen_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/account_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/control_centre.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-control-centre.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-games.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-updates.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/kodi_flatpak_test.py'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview29_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Preview 29 — compact Linux Mint-style child panel icons
+
+          Fixes the uneven icon sizes in the **child account's XFCE bottom panel**, particularly the oversized native Xfce Power Manager battery icon compared with the tray and normal Linux Mint apps.
+
+          - New ParentPilot child desktops use a **40px panel** with **22px app and power icons** (previously 44px panel with 32px icons); the status tray remains 20px.
+          - An **existing configured child account** receives a safe, one-time migration at its next XFCE sign-in: only live panel height **44 → 40** and icon size **32 → 22** are changed, and only if those settings still have ParentPilot's original default values.
+          - If the family has customised either setting, it is **left alone**, and a one-time marker prevents future overwrites.
+          - Pinned Kodi, Chromium and game shortcuts, taskbar launcher IDs and order, Whisker menu, Xfce Power Manager plugin, Wi-Fi, sound, clock and other panel configuration stay exactly as before.
+          - Unlike much older ParentPilot releases, this change never rebuilds the panel XML, replaces taskbar plugins or forces a panel restart. The adult Linux Mint desktop is never modified.
+          - Parent PIN, child login and password, time allowances, saved screenshots, current Kodi version and installed games remain unchanged.
+          - Retains Preview 28's clearly labeled newer-Kodi-for-modern-computers option and dedicated safe remove button, with classic Kodi 20.5 preferred when it plays local videos smoothly.
+
+          **To apply:** Log in as the adult, open ParentPilot Control Centre → Updates → preview, and install Preview 29. Save any work before approving sign-out. Sign into the child account, then check the lower-right battery, network, sound and clock. A new-child setup is NOT required.
+
+          GitHub Actions passed regression tests on initial panel dimensions, child XFCE one-time icon changes, respect for custom sizing, preserved pinned Kodi and full panel XML, account permissions, the timer and lock screen, compact UI smoke tests and packaged DEB integrity. The final icon rendering still needs confirmation on the Dell.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview29 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview29 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 29 - Compact Mint-style child panel and battery icons"
+          else
+            gh release create v0.5.0-preview29 \
+              publish/parentpilot_0.5.0.preview29_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target 0b805fb6a4c14b92144a8891f5f21612ea6109e4 \
+              --title "ParentPilot Linux Preview 29 - Compact Mint-style child panel and battery icons" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview29 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
