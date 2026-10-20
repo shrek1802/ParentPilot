@@ -1,0 +1,100 @@
+name: Publish ParentPilot Linux Preview 23
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview23.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39421717608
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = ee72619977288e64b3cad0054137d5ac510a7fb7
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39421717608 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview23 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview23_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview23'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/screen_settings.py'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview23_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Preview 23 — screen pictures always ready for parents
+
+          **Important privacy behaviour change:** This release makes screen-picture requests available to authenticated parents by default. During an administrator-approved upgrade of a managed ParentPilot laptop, it switches the existing `screen_view_enabled` flag to true. This is intentional, and not an automatic background screen capture.
+
+          - Removes the additional screen-picture on/off checkbox from first-time Family Setup.
+          - Removes the separate adult Screen Picture Settings application; parents no longer need to enable pictures in another window.
+          - The authenticated ParentPilot phone app or parent web panel can request **one picture at a time**. A visible notification appears on the child's laptop before each picture.
+          - There is **no live stream, continuous monitoring, automatic screenshots or hidden capture**. The existing 45-second request interval, preview expiry, and explicitly saved, limited gallery still apply.
+          - On existing DEB-managed installations, the already-protected APT upgrade performs a one-flag configuration migration with atomic persistence, retains original permissions and restarts the control service. If the restart fails, the migration rolls back.
+          - All child accounts, existing administrator login, screen-time allowances, PINs, background lock, saved pictures, games, Kodi, VLC, screen lock, Whisker menu, and battery indicator remain unchanged.
+          - Older unmanaged installations are not migrated or reset by this release.
+
+          **Install:** Sign into your adult Linux account → ParentPilot Updates → choose **preview** → Check for updates → install Preview 23. Save the child's open work before confirming sign-out. Once the update finishes, open the **Screen** tab in the ParentPilot phone app and press **Take a screen picture**. It should work without another laptop settings step.
+
+          Automated tests, including managed-migration validation, preserving configuration and rollback, child lock/timer tests, small XFCE screens and Debian package checks passed. Physical capture on the Dell still needs checking.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview23 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview23 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 23 - always-ready parent screen pictures"
+          else
+            gh release create v0.5.0-preview23 \
+              publish/parentpilot_0.5.0.preview23_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target ee72619977288e64b3cad0054137d5ac510a7fb7 \
+              --title "ParentPilot Linux Preview 23 - always-ready parent screen pictures" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview23 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
