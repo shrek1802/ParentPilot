@@ -15,7 +15,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from games_catalog import GAMES
+from games_catalog import GAMES, MEDIA_PLAYERS
 from games_install import is_installed
 import sys
 
@@ -62,7 +62,7 @@ class GamesGUI:
         footer = tk.Frame(outer, bg=BG)
         footer.pack(side='bottom', fill='x', pady=(8, 0))
         self.install_btn = tk.Button(
-            footer, text='Install selected games', bg=ACCENT, fg='#082f49',
+            footer, text='Install selected apps', bg=ACCENT, fg='#082f49',
             font=('Sans', 11, 'bold'), relief='flat', padx=12, pady=7,
             command=self.install,
         )
@@ -123,6 +123,29 @@ class GamesGUI:
                 justify='left', wraplength=width - 95,
                 font=('Sans', 9),
             ).pack(anchor='w', padx=23, pady=(0, 4))
+        tk.Label(body, text='MEDIA PLAYERS', bg=PANEL, fg=ACCENT,
+                 font=('Sans', 10, 'bold')).pack(anchor='w', pady=(14, 4))
+        self.media_checks = {}
+        for media_id, title, _category, description, package in MEDIA_PLAYERS:
+            try:
+                installed = is_installed(package)
+            except (OSError, subprocess.TimeoutExpired):
+                installed = False
+            value = tk.BooleanVar(value=False)
+            self.media_checks[media_id] = value
+            cb = tk.Checkbutton(
+                body, text=title + ('  ✓ already installed' if installed else ''),
+                variable=value, bg=PANEL, fg=FOREGROUND, selectcolor=BG,
+                activebackground=PANEL, activeforeground=FOREGROUND,
+                anchor='w', font=('Sans', 11, 'bold'), disabledforeground=MUTED,
+            )
+            cb.pack(anchor='w')
+            if installed:
+                cb.configure(state='disabled')
+            tk.Label(body, text=description + '. VLC remains available.',
+                     bg=PANEL, fg=MUTED, anchor='w', justify='left',
+                     wraplength=width - 95, font=('Sans', 9)).pack(
+                         anchor='w', padx=23, pady=(0, 6))
         self.root.after(120, self.poll)
 
     def set_detail(self, value):
@@ -135,14 +158,15 @@ class GamesGUI:
         if self.running:
             return
         ids = [key for key, var in self.checks.items() if var.get()]
-        if not ids:
-            messagebox.showinfo('Games & Learning', 'Tick one or more games first.', parent=self.root)
+        media_ids = [key for key, var in self.media_checks.items() if var.get()]
+        if not ids and not media_ids:
+            messagebox.showinfo('Games & Learning', 'Tick one or more games or media players first.', parent=self.root)
             return
         if not messagebox.askyesno(
-            'Install selected games',
-            'Install ' + str(len(ids)) + ' free game(s) through Linux Mint APT?\n\n'
+            'Install selected apps',
+            'Install ' + str(len(ids) + len(media_ids)) + ' free app(s) through Linux Mint APT?\\n\\n'
             'This requires internet access and administrator permission. '
-            'Games will be available in the normal Linux Applications menu '
+            'Apps will be available in the normal Linux Applications menu '
             'for the family. No accounts, timer data or existing programs '
             'will be removed.',
             parent=self.root,
@@ -150,13 +174,13 @@ class GamesGUI:
             return
         self.running = True
         self.install_btn.configure(state='disabled')
-        self.status.set('Installing games. Please wait…')
+        self.status.set('Installing selected apps…')
         self.set_detail('An administrator password prompt should appear. Please do not close the window.')
         def work():
             try:
                 result = subprocess.run(
                     ['pkexec', '/usr/bin/python3', HELPER, '--from-manager'],
-                    input=json.dumps({'games': ids}), text=True, capture_output=True,
+                    input=json.dumps({'games': ids, 'media': media_ids}), text=True, capture_output=True,
                     timeout=3000, check=False,
                 )
                 self.events.put((result.returncode, result.stdout + '\n' + result.stderr))
@@ -170,11 +194,11 @@ class GamesGUI:
                 code, result = self.events.get_nowait()
                 self.running = False
                 self.install_btn.configure(state='normal')
-                self.status.set('Finished.' if code == 0 else 'Some games could not be installed.')
+                self.status.set('Finished.' if code == 0 else 'Some apps could not be installed.')
                 self.set_detail(result.strip()[-4500:] or 'Administrator approval was cancelled.')
                 if code == 0:
-                    messagebox.showinfo('Games installed',
-                                        'Selected games are ready in the Applications menu.',
+                    messagebox.showinfo('Apps installed',
+                                        'Selected apps are ready in the Applications menu.',
                                         parent=self.root)
                     self.root.destroy()
                     return
