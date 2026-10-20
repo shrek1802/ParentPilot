@@ -45,7 +45,34 @@ try:
         assert left >= 0 and top >= 0, (name, left, top)
         assert left + width <= root.winfo_width(), (name, left, width, root.winfo_width())
         assert top + height <= root.winfo_height(), (name, top, height, root.winfo_height())
-    print('PASS: updater controls remain inside the window on '
+    assert ui.progress.winfo_ismapped()
+    assert ui.notes_tab in ui.tabs.tabs() or str(ui.notes_tab) in ui.tabs.tabs()
+    ui.set_busy(True, installing=True)
+    assert ui.installing and ui.busy
+    assert str(ui.install_button.cget('state')) == 'disabled'
+    ui.events.put(('phase', 'verify', None))
+    ui.events.put(('activity', 'Verified release metadata', None))
+    ui.process_events()
+    assert ui.status.get() == 'Checking release'
+    assert 'Step 1 of 7' in ui.phase.get()
+    assert 'Verified release metadata' in ui.activity.get('1.0', 'end')
+    ui.events.put(('phase', 'health', None))
+    ui.process_events()
+    assert 'Step 7 of 7' in ui.phase.get()
+    assert ui.status.get() == 'Checking everything works'
+    # A completed worker must stop the spinner and report the final result.
+    ui.events.put((ui.installed, (0, 'SUCCESS'), None))
+    ui.process_events()
+    assert not ui.busy and not ui.installing
+    assert ui.status.get() == 'Update installed successfully'
+    assert 'Sign the child back in' in ui.phase.get()
+    assert 'installer completed' in ui.activity.get('1.0', 'end')
+    ui.events.put(('phase', 'restore', None))
+    ui.process_events()
+    assert ui.status.get() == 'Restoring from backup'
+    assert ui.tabs.select() == str(ui.activity_tab)
+    print('PASS: Live milestones, activity log, spinner and final result')
+    print('PASS: updater controls remain inside the window on 
           f'{root.winfo_screenwidth()}x{root.winfo_screenheight()} at 1.5x font scaling')
 finally:
     root.destroy()
