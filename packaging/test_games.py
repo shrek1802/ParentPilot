@@ -108,6 +108,23 @@ assert all('remove' not in cmd and 'purge' not in cmd for cmd in commands)
 assert installer.install_selected([], runner=fake_runner) == ([], [], [])
 assert installer.install_selected_media(['kodi'], runner=fake_runner) == (['Kodi Media Centre'], [], [])
 assert [argv[-1] for argv in commands if argv[0] == '/usr/bin/apt-get'][-1] == 'kodi'
+# The adult installer emits genuine per-app progress immediately, including
+# a terminal event for every selected item, even when APT cannot install it.
+import contextlib
+import io
+import json
+captured = io.StringIO()
+with contextlib.redirect_stdout(captured):
+    result = installer.install_selected(['supertux', 'frozenbubble'], runner=fake_runner, progress=True)
+assert result[0] == ['SuperTux']
+events = [json.loads(line[len(installer.EVENT_PREFIX):])
+          for line in captured.getvalue().splitlines()
+          if line.startswith(installer.EVENT_PREFIX)]
+assert [(e['event'], e['id']) for e in events] == [
+    ('checking', 'supertux'), ('installing', 'supertux'), ('installed', 'supertux'),
+    ('checking', 'frozenbubble'), ('installing', 'frozenbubble'),
+    ('failed', 'frozenbubble')]
+assert set(events[0]) == {'event', 'id', 'name'}
 
 # Root backend authorisation checks use the PolicyKit caller, never an
 # arbitrary request as coming from the child or a random shell.

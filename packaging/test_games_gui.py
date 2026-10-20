@@ -42,6 +42,33 @@ try:
         root.winfo_screenwidth(), root.winfo_screenheight(), button_bottom, window_bottom,
     )
     assert app.install_btn.winfo_width() > 100
+    assert app.progress.winfo_ismapped(), 'Live progress bar must always be visible'
+    assert not app.activity_bar.winfo_ismapped(), 'Busy indicator is initially stopped'
+    app.media_checks['kodi'].set(True)
+    assert app.selection.get() == '1 app selected'
+    app.start_progress(2)
+    assert app.running and app.total == 2
+    assert app.activity_bar.winfo_ismapped()
+    assert app.install_btn.cget('state') == 'disabled'
+    assert float(app.progress['value']) == 0
+    app.process_line(games_gui.EVENT_PREFIX + '{"event":"checking","id":"supertux","name":"SuperTux"}')
+    assert app.status.get() == 'Checking SuperTux'
+    app.process_line(games_gui.EVENT_PREFIX + '{"event":"installing","id":"supertux","name":"SuperTux"}')
+    assert 'Installing SuperTux' in app.status.get()
+    app.process_line(games_gui.EVENT_PREFIX + '{"event":"installed","id":"supertux","name":"SuperTux"}')
+    assert float(app.progress['value']) == 1
+    assert '1 of 2' in app.progress_info.get()
+    app.process_line(games_gui.EVENT_PREFIX + '{"event":"failed","id":"kodi","name":"Kodi Media Centre"}')
+    assert float(app.progress['value']) == 2
+    with patch.object(games_gui.messagebox, 'showwarning'):
+        app.finish(1)
+    assert not app.running
+    assert app.install_btn.cget('state') == 'normal'
+    assert 'partially failed' in app.status.get()
+    app.root.update_idletasks()
+    # Optional details appear when errors occur. All controls still fit.
+    assert app.detail.winfo_ismapped()
+    print('PASS: visible progress, live per-app milestones, failure recovery')
     print('PASS: 8 optional checkboxes, footer visible at ' +
           f'{root.winfo_screenwidth()}x{root.winfo_screenheight()}')
 finally:

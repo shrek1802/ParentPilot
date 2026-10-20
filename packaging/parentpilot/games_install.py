@@ -50,20 +50,36 @@ def is_installed(package, runner=subprocess.run):
     return result.returncode == 0 and result.stdout.strip() == 'install ok installed'
 
 
-def _install_approved(selected, catalogue, runner):
+EVENT_PREFIX = 'PARENTPILOT_APP_EVENT:'
+
+
+def report_event(kind, item_id, display):
+    """Print allowlisted, machine-readable progress for the adult GUI."""
+    print(EVENT_PREFIX + json.dumps(
+        {'event': kind, 'id': item_id, 'name': display},
+        ensure_ascii=True, separators=(',', ':')), flush=True)
+
+
+def _install_approved(selected, catalogue, runner, progress=False):
     """Only allowlisted APT packages; no repo additions, uninstall or add-ons."""
     installed, existing, failed = [], [], []
     for item_id in selected:
         display = catalogue[item_id][1]
         package = catalogue[item_id][4]
+        if progress:
+            report_event('checking', item_id, display)
         print('Checking ' + display + '…', flush=True)
         try:
             if is_installed(package, runner=runner):
                 existing.append(display)
                 print('Already installed: ' + display, flush=True)
+                if progress:
+                    report_event('already', item_id, display)
                 continue
             # APT's allowlisted package selection cannot be turned into a
             # shell command or a user-controlled package list.
+            if progress:
+                report_event('installing', item_id, display)
             result = runner([
                 '/usr/bin/apt-get', 'install', '-y', '--no-install-recommends',
                 package,
@@ -73,23 +89,29 @@ def _install_approved(selected, catalogue, runner):
                 problem = (result.stderr or result.stdout or 'APT installation failed').strip()
                 failed.append((display, problem[-550:]))
                 print('Could not install ' + display + ': ' + problem[-550:], flush=True)
+                if progress:
+                    report_event('failed', item_id, display)
             else:
                 installed.append(display)
                 print('Installed: ' + display, flush=True)
+                if progress:
+                    report_event('installed', item_id, display)
         except (OSError, subprocess.TimeoutExpired) as exc:
             failed.append((display, str(exc)))
             print('Could not install ' + display + ': ' + str(exc), flush=True)
+            if progress:
+                report_event('failed', item_id, display)
     return installed, existing, failed
 
 
-def install_selected(game_ids, runner=subprocess.run):
+def install_selected(game_ids, runner=subprocess.run, progress=False):
     """Install only parent's selected, allowlisted educational games."""
-    return _install_approved(validate_game_ids(list(game_ids)), BY_ID, runner)
+    return _install_approved(validate_game_ids(list(game_ids)), BY_ID, runner, progress=progress)
 
 
-def install_selected_media(media_ids, runner=subprocess.run):
+def install_selected_media(media_ids, runner=subprocess.run, progress=False):
     """Install only the selected official distribution media-player package."""
-    return _install_approved(validate_media_ids(list(media_ids)), BY_MEDIA_ID, runner)
+    return _install_approved(validate_media_ids(list(media_ids)), BY_MEDIA_ID, runner, progress=progress)
 
 
 def main():
@@ -111,8 +133,8 @@ def main():
     if not selection and not media:
         print('Nothing selected. Nothing changed.')
         return
-    installed, existing, failed = install_selected(selection)
-    media_installed, media_existing, media_failed = install_selected_media(media)
+    installed, existing, failed = install_selected(selection, progress=True)
+    media_installed, media_existing, media_failed = install_selected_media(media, progress=True)
     print('Finished. New apps: ' + str(len(installed) + len(media_installed)) +
           ' · Already present: ' + str(len(existing) + len(media_existing)) +
           ' · Unavailable: ' + str(len(failed) + len(media_failed)), flush=True)

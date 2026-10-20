@@ -2,6 +2,7 @@
 """ParentPilot first-run GUI setup. No account modifications without PolicyKit approval."""
 import json
 import os
+import queue
 import unicodedata
 from pathlib import Path
 import re
@@ -16,7 +17,10 @@ from games_catalog import GAMES
 
 ROOT = Path('/usr/lib/parentpilot')
 MARKER = Path('/etc/max-family-control/config.json')
-BG = '#101a30'; CARD = '#1b2a41'; TEXT = '#f8fafc'; SUB = '#b9ccdf'; BLUE = '#38bdf8'; TEAL = '#26c5b4'
+BG = '#0f172a'; CARD = '#1e293b'; INSET = '#111d31'
+TEXT = '#f8fafc'; SUB = '#cbd5e1'; MUTED = '#94a3b8'
+BLUE = '#38bdf8'; TEAL = '#34d399'; RED = '#fca5a5'
+STEP_TITLES = ('Welcome', 'Child account', 'Family controls', 'Review')
 
 class Wizard:
     def __init__(self, autostart=False):
@@ -30,14 +34,15 @@ class Wizard:
                 return
         self.root=tk.Tk()
         self.root.title('ParentPilot — Family Setup')
-        width=min(780,max(560,self.root.winfo_screenwidth()-60))
-        height=min(690,max(440,self.root.winfo_screenheight()-100))
+        width=min(self.root.winfo_screenwidth(), max(460, min(780, self.root.winfo_screenwidth()-65)))
+        height=min(self.root.winfo_screenheight(), max(340, min(650, self.root.winfo_screenheight()-100)))
         self.root.geometry(f'{width}x{height}')
-        self.root.minsize(560,440)
+        self.root.minsize(min(width, 460), min(height, 340))
         self.root.configure(bg=BG)
-        self.root.protocol('WM_DELETE_WINDOW',self.root.destroy)
+        self.root.protocol('WM_DELETE_WINDOW',self.close)
         self.step=0
         self.installing=False
+        self.install_events=queue.Queue()
         self.preflight=self.load_preflight()
         self._previous_suggestion=''
         self._suggesting_user=False
@@ -61,8 +66,9 @@ class Wizard:
                              for game_id, *_ in GAMES}
         self.v['child_name'].trace_add('write', self.suggest_user)
         self.main=tk.Frame(self.root,bg=BG)
-        self.main.pack(fill='both',expand=True,padx=28,pady=20)
+        self.main.pack(fill='both',expand=True,padx=14,pady=10)
         self.draw()
+        self.root.after(140,self.poll_install)
         self.root.mainloop()
 
     @staticmethod
@@ -99,7 +105,7 @@ class Wizard:
 
     def lbl(self,parent,txt,size=11,col=TEXT,bold=False,wrap=670,pad=7):
         w=tk.Label(parent,text=txt,bg=parent.cget('bg'),fg=col,
-                   font=('DejaVu Sans',size,'bold' if bold else 'normal'),
+                   font=('Sans',size,'bold' if bold else 'normal'),
                    justify='left',anchor='w',wraplength=wrap)
         w.pack(fill='x',anchor='w',pady=(pad,2))
         return w
@@ -107,56 +113,94 @@ class Wizard:
     def entry(self,parent,title,key,mask=False):
         self.lbl(parent,title,11,SUB,True,pad=10)
         e=tk.Entry(parent,textvariable=self.v[key],font=('DejaVu Sans',12),
-                   show='•' if mask else '',relief='flat',bg='#f8fafc',fg='#0f172a',insertbackground='#0f172a')
-        e.pack(fill='x',ipady=8)
+                   show='•' if mask else '',relief='flat',bg='#e2e8f0',fg='#0f172a',insertbackground='#0f172a',highlightthickness=2,highlightcolor=BLUE)
+        e.pack(fill='x',ipady=7)
         return e
 
     def checked(self,parent,label,key):
         value = self.game_choices[key[5:]] if key.startswith('game:') else self.v[key]
         tk.Checkbutton(parent,text=label,variable=value,bg=parent.cget('bg'),
                        fg=TEXT,activebackground=parent.cget('bg'),selectcolor=BG,
-                       activeforeground=TEXT,font=('DejaVu Sans',11),anchor='w').pack(fill='x',pady=8)
+                       activeforeground=TEXT,font=('Sans',10),anchor='w',wraplength=595,justify='left').pack(fill='x',pady=7)
 
     def draw(self):
-        for w in self.main.winfo_children():w.destroy()
-        head=tk.Frame(self.main,bg=BG);head.pack(fill='x')
+        for widget in self.main.winfo_children():
+            widget.destroy()
+        head=tk.Frame(self.main,bg=BG)
+        head.pack(fill='x')
         self.photo=None
         try:
-            self.photo=tk.PhotoImage(file=str(ROOT/'desktop/assets/parentpilot-icon-128.png'))
-            tk.Label(head,image=self.photo,bg=BG).pack(side='left',padx=(0,15))
-        except (tk.TclError,OSError):pass
-        text=tk.Frame(head,bg=BG);text.pack(side='left',fill='x',expand=True)
-        self.lbl(text,'ParentPilot',24,TEXT,True,pad=0)
-        self.lbl(text,'FAMILY SETUP  •  STEP '+str(self.step+1)+' OF 4',10,TEAL,True,pad=1)
-        # Long option descriptions must remain reachable at small laptop resolutions.
+            # The source image is 128px; a 64px header leaves room on a 480px screen.
+            self.photo=tk.PhotoImage(file=str(ROOT/'desktop/assets/parentpilot-icon-128.png')).subsample(2,2)
+            tk.Label(head,image=self.photo,bg=BG).pack(side='left',padx=(0,10))
+        except (tk.TclError,OSError):
+            tk.Label(head,text='P',bg=BLUE,fg=BG,font=('Sans',19,'bold'),width=2).pack(side='left',padx=(0,10))
+        branding=tk.Frame(head,bg=BG)
+        branding.pack(side='left',fill='x',expand=True)
+        self.lbl(branding,'ParentPilot',20,TEXT,True,pad=0)
+        self.lbl(branding,'FAMILY SETUP  ·  '+STEP_TITLES[self.step].upper(),
+                 9,MUTED,True,pad=0)
+
+        steps=tk.Frame(self.main,bg=BG)
+        steps.pack(fill='x',pady=(8,4))
+        for index,name in enumerate(STEP_TITLES):
+            active=index==self.step
+            complete=index<self.step
+            color=BLUE if active else TEAL if complete else PANEL
+            fg=BG if active or complete else SUB
+            tk.Label(steps,text=str(index+1)+'  '+name,fg=fg,bg=color,
+                     font=('Sans',8,'bold'),padx=6,pady=6,anchor='center').pack(
+                         side='left',fill='x',expand=True,padx=(0,4))
+
+        # Navigation is reserved at the bottom before allocating scroll space.
+        nav=tk.Frame(self.main,bg=BG)
+        nav.pack(side='bottom',fill='x',pady=(8,1))
+        self.nav_buttons=[]
+        def action(label,func,colour=BLUE):
+            button=tk.Button(nav,text=label,command=func,bg=colour,fg=BG,
+                             activebackground=TEAL,activeforeground=BG,
+                             relief='flat',borderwidth=0,padx=14,pady=8,
+                             font=('Sans',10,'bold'))
+            self.nav_buttons.append(button)
+            return button
+        if self.step:
+            action('Back',self.back,PANEL).configure(fg=TEXT)
+            self.nav_buttons[-1].pack(side='left')
+        if self.step==3:
+            action('Install ParentPilot',self.install,TEAL).pack(side='right')
+        else:
+            action('Continue',self.next).pack(side='right')
+
         card=tk.Frame(self.main,bg=CARD)
-        card.pack(fill='both',expand=True,pady=(18,10))
+        card.pack(fill='both',expand=True,pady=(7,0))
         canvas=tk.Canvas(card,bg=CARD,highlightthickness=0,borderwidth=0)
-        bar=tk.Scrollbar(card,orient='vertical',command=canvas.yview)
+        bar=ttk.Scrollbar(card,orient='vertical',command=canvas.yview)
         canvas.configure(yscrollcommand=bar.set)
         bar.pack(side='right',fill='y')
         canvas.pack(side='left',fill='both',expand=True)
-        body=tk.Frame(canvas,bg=CARD,padx=24,pady=15)
+        body=tk.Frame(canvas,bg=CARD,padx=14,pady=11)
         window=canvas.create_window((0,0),window=body,anchor='nw')
         body.bind('<Configure>',lambda _:canvas.configure(scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>',lambda event:canvas.itemconfigure(window,width=event.width))
         self.body=body
-        if self.step==0:self.welcome()
-        elif self.step==1:self.child()
-        elif self.step==2:self.controls()
-        else:self.review()
-        nav=tk.Frame(self.main,bg=BG);nav.pack(fill='x',pady=(5,0))
-        def b(txt,func,colour=BLUE):
-            return tk.Button(nav,text=txt,command=func,bg=colour,fg='#082034',borderwidth=0,
-                             activebackground=TEAL,activeforeground='#082034',padx=18,pady=10,
-                             font=('DejaVu Sans',11,'bold'))
-        if self.step:
-            b('‹ Back',self.back,'#a8c5d6').pack(side='left')
-        if self.step==3:
-            b('Install ParentPilot',self.install,TEAL).pack(side='right')
+        if self.step==0:
+            self.welcome()
+        elif self.step==1:
+            self.child()
+        elif self.step==2:
+            self.controls()
         else:
-            b('Continue ›',self.next).pack(side='right')
+            self.review()
         self.root.update_idletasks()
+
+    def summary_row(self, title, value):
+        row=tk.Frame(self.body,bg=INSET,padx=10,pady=7)
+        row.pack(fill='x',pady=3)
+        tk.Label(row,text=title.upper(),bg=INSET,fg=MUTED,
+                 font=('Sans',8,'bold'),anchor='w').pack(fill='x')
+        tk.Label(row,text=value,bg=INSET,fg=TEXT,
+                 font=('Sans',10),anchor='w',justify='left',
+                 wraplength=570).pack(fill='x',pady=(2,0))
 
     def welcome(self):
         self.lbl(self.body,'Welcome to ParentPilot',19,TEXT,True)
@@ -226,24 +270,43 @@ class Wizard:
 
     def review(self):
         self.lbl(self.body,'Ready to install',18,TEXT,True)
-        self.lbl(self.body,'Child: '+self.v['child_name'].get()+' ('+self.v['child_user'].get()+')',12,TEXT,pad=20)
-        self.lbl(self.body,'YouTube: '+('YouTube Kids' if self.v['youtube'].get()=='kids' else 'Supervised YouTube'),11,SUB)
-        self.lbl(self.body,'Netflix shortcut: '+('Yes' if self.v['netflix'].get() else 'No'),11,SUB)
-        self.lbl(self.body,'Child automatic login: '+('Yes' if self.v['autologin'].get() else 'No'),11,SUB)
-        self.lbl(self.body,'Chromium family policy: '+('Enabled' if self.v['family_filter'].get() else 'Not enabled'),11,SUB)
-        self.lbl(self.body,'Screen picture requests: '+('Parent-authorised, with a visible child notice' if self.v['screen_view'].get() else 'Off'),11,SUB)
-        chosen = [title for game_id, title, *_ in GAMES if self.game_choices[game_id].get()]
-        self.lbl(self.body, 'Free games: ' +
-                 (', '.join(chosen) if chosen else 'None selected'), 10, SUB, wrap=620, pad=10)
-        self.lbl(self.body, 'Kodi Media Centre: ' +
-                 ('Install from APT' if self.v['kodi'].get() else 'Not selected'), 10, SUB, pad=5)
-        self.lbl(self.body,'The child keeps the normal Linux Mint applications menu, '
-                 'including VLC and other programs. Other browser shortcuts are hidden '
-                 'from the menu, but menu hiding alone does not block browsers.',11,SUB,pad=15)
-        self.lbl(self.body,'Installing requires your existing ADMINISTRATOR password in the system authentication popup. The child’s six-digit PIN will never appear in this window.',10,TEAL,pad=17)
-        self.result=tk.Text(self.body,height=7,bg='#0d1728',fg=TEXT,insertbackground=TEXT,font=('DejaVu Sans Mono',9),wrap='word')
-        self.result.pack(fill='both',expand=True,pady=(15,2))
-        self.result.insert('1.0','Ready. Click Install ParentPilot below.\n')
+        self.lbl(self.body,'Confirm your settings before approving the administrator prompt.',
+                 10,SUB,pad=4)
+        self.summary_row('Child account',
+                         self.v['child_name'].get()+' ('+self.v['child_user'].get()+')')
+        self.summary_row('YouTube',
+                         'YouTube Kids' if self.v['youtube'].get()=='kids' else 'Supervised YouTube')
+        self.summary_row('Netflix',
+                         'Shortcut selected' if self.v['netflix'].get() else 'Not selected')
+        self.summary_row('Automatic login',
+                         'Enabled' if self.v['autologin'].get() else 'Off')
+        self.summary_row('Chromium family policy',
+                         'Enabled' if self.v['family_filter'].get() else 'Off')
+        self.summary_row('Parent screen picture requests',
+                         'Parent-authorised with a child notice' if self.v['screen_view'].get() else 'Off')
+        chosen=[title for game_id,title,*_ in GAMES if self.game_choices[game_id].get()]
+        self.summary_row('Optional games',', '.join(chosen) if chosen else 'None selected')
+        self.summary_row('Kodi Media Centre',
+                         'Install from official APT' if self.v['kodi'].get() else 'Not selected')
+        self.lbl(self.body,'The normal Linux Mint desktop and VLC remain available. '
+                 'Installing requires your existing administrator password. '
+                 'It does not display or store your child password or parent PIN in the log.',
+                 10,SUB,wrap=570,pad=8)
+        self.install_status=tk.StringVar(value='Ready for administrator approval')
+        self.lbl(self.body,'SETUP PROGRESS',10,BLUE,True,pad=12)
+        tk.Label(self.body,textvariable=self.install_status,bg=CARD,fg=TEXT,
+                 font=('Sans',10),anchor='w',justify='left').pack(fill='x')
+        style=ttk.Style(self.root)
+        style.configure('Setup.Horizontal.TProgressbar',background=BLUE,
+                        troughcolor='#334155',thickness=8)
+        self.install_progress=ttk.Progressbar(
+            self.body,mode='indeterminate',style='Setup.Horizontal.TProgressbar')
+        self.install_progress.pack(fill='x',pady=(6,8))
+        self.result=tk.Text(self.body,height=4,bg=INSET,fg=SUB,
+                            insertbackground=TEXT,font=('DejaVu Sans Mono',9),
+                            wrap='word',padx=8,pady=6,relief='flat')
+        self.result.pack(fill='both',expand=True,pady=(2,4))
+        self.result.insert('1.0','Nothing has been installed yet.\n')
         self.result.configure(state='disabled')
 
     def check_step(self):
@@ -266,13 +329,16 @@ class Wizard:
         return None
 
     def next(self):
+        if self.installing: return
         if self.step == 0 and not self.preflight.get('compatible',False):
             messagebox.showerror('Laptop not ready','See the reasons above. Nothing has been changed.');return
         err=self.check_step()
         if err:messagebox.showerror('Check setup details',err);return
         self.step+=1;self.draw()
 
-    def back(self):self.step-=1;self.draw()
+    def back(self):
+        if self.installing: return
+        self.step-=1;self.draw()
 
     def append(self,txt):
         self.result.configure(state='normal')
@@ -281,34 +347,94 @@ class Wizard:
         self.result.configure(state='disabled')
 
     def install(self):
-        if self.installing: return
-        if not messagebox.askyesno('Confirm ParentPilot setup',
-                'Create the new child account and install the timer, family shortcuts and Wi-Fi discovery?\n\nYour existing adult account will not be changed.'):
+        if self.installing:
+            return
+        if not messagebox.askyesno(
+            'Confirm ParentPilot setup',
+            'Create the new child account and install the timer, family shortcuts '
+            'and Wi-Fi discovery?\n\nYour existing adult account will not be changed.',
+            parent=self.root):
             return
         self.installing=True
-        self.append('Requesting administrator permission…')
-        data={k:v.get() for k,v in self.v.items() if k not in ('child_password2','parent_pin2')}
-        data['games'] = [key for key, var in self.game_choices.items() if var.get()]
-        # Never put secrets in command-line arguments, desktop files or persistent logs.
+        self.append('Waiting for administrator approval…')
+        self.install_status.set('Waiting for your Linux administrator password…')
+        self.install_progress.start(12)
+        for button in self.nav_buttons:
+            button.configure(state='disabled')
+        data={k:v.get() for k,v in self.v.items()
+              if k not in ('child_password2','parent_pin2')}
+        data['games']=[key for key,var in self.game_choices.items() if var.get()]
+        # Sensitive values are sent only over the child's creation request
+        # stdin pipe, never command-line arguments, release notes or logs.
         def task():
             try:
-                proc=subprocess.run(['pkexec','/usr/lib/parentpilot/setup-root','--from-wizard'],
-                                    input=json.dumps(data),text=True,capture_output=True,timeout=3000)
-                success=(proc.returncode==0)
-                output=(proc.stdout+'\n'+proc.stderr).strip()
-                self.root.after(0,lambda:self.finish(success,output))
-            except (OSError,subprocess.TimeoutExpired) as exc:
-                self.root.after(0,lambda:self.finish(False,str(exc)))
+                with subprocess.Popen(
+                    ['pkexec','/usr/lib/parentpilot/setup-root','--from-wizard'],
+                    stdin=subprocess.PIPE,stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,text=True,errors='replace',
+                    bufsize=1,
+                ) as proc:
+                    proc.stdin.write(json.dumps(data))
+                    proc.stdin.close()
+                    for line in proc.stdout:
+                        self.install_events.put(('line',line.rstrip('\r\n')))
+                    code=proc.wait()
+                self.install_events.put(('done',code))
+            except (OSError,ValueError,subprocess.SubprocessError) as exc:
+                self.install_events.put(('error',str(exc)))
         threading.Thread(target=task,daemon=True).start()
+
+    def poll_install(self):
+        try:
+            while True:
+                kind,value=self.install_events.get_nowait()
+                if kind=='line':
+                    # The privileged installer only logs fixed operation names
+                    # and APT progress; it never prints passwords or PINs.
+                    if value:
+                        self.append(value)
+                        if value.startswith('SETUP_PROGRESS:'):
+                            self.install_status.set(value.split(':',1)[1][:110])
+                elif kind=='done':
+                    self.finish(value==0,
+                                '' if value==0 else 'Setup failed or administrator approval was cancelled.')
+                elif kind=='error':
+                    self.finish(False,value)
+        except queue.Empty:
+            pass
+        self.root.after(150,self.poll_install)
 
     def finish(self,success,output):
         self.installing=False
-        self.append(output if output else 'The setup did not return a message.')
+        self.install_progress.stop()
+        if output:
+            self.append(output)
         if success:
+            self.install_status.set('Family setup completed')
+            self.append('Success. The child account is ready for its next sign-in.')
             messagebox.showinfo('ParentPilot ready',
-                'Setup complete!\n\n1. Sign into the new child account and check its timer.\n2. Connect your phone and laptop to the same Wi-Fi.\n3. Open ParentPilot on Android and tap Find nearby laptop.\n4. Sign in with your parent PIN.\n\nYour existing adult account has not been changed.')
+                'Setup complete!\n\nSign into the new child account and check the timer. '
+                'Connect the phone and laptop to the same Wi-Fi to use the '
+                'ParentPilot Android app. Your adult account remains unchanged.',
+                parent=self.root)
         else:
-            messagebox.showerror('Setup was not completed','The installation stopped. Read the details above. ParentPilot will not overwrite an existing installation.')
+            self.install_status.set('Setup did not complete — see details')
+            for button in self.nav_buttons:
+                button.configure(state='normal')
+            messagebox.showerror('Setup was not completed',
+                'The installation stopped. Review the messages in the setup window. '
+                'ParentPilot will not overwrite an existing installation.',
+                parent=self.root)
+
+    def close(self):
+        if self.installing:
+            messagebox.showwarning(
+                'Family setup in progress',
+                'Please keep this window open until setup finishes. '
+                'Closing it during account creation could interrupt the installation.',
+                parent=self.root)
+        else:
+            self.root.destroy()
 
 
 if __name__=='__main__':

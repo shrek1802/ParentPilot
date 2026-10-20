@@ -236,12 +236,17 @@ def main():
     if len(raw)>8192: raise ValueError('Setup payload too large.')
     data=json.loads(raw)
     name,user,password,pin=validate(data)
+    print('SETUP_PROGRESS:Checking laptop and existing installations…', flush=True)
     check_host(user, autologin=data['autologin'], family_filter=data['family_filter'])
+    print('SETUP_PROGRESS:Creating the child account…', flush=True)
     # Preserve parent account; never change the adult's password or session.
     run('adduser','--disabled-password','--gecos',f'{name},,,',user)
     run('chpasswd',input=f'{user}:{password}\n')
+    print('SETUP_PROGRESS:Preparing the child desktop and menu…', flush=True)
     child_desktop(user,name,data['youtube'],data['netflix'])
+    print('SETUP_PROGRESS:Applying the chosen browser settings…', flush=True)
     configure_chromium(data['youtube'],data['family_filter'])
+    print('SETUP_PROGRESS:Installing the ParentPilot timer and control service…', flush=True)
     install_timer(user,name,pin,data['autologin'],data['screen_view'])
     # Optional games never affect successful account/controller setup. Install
     # only approved APT packages, AFTER the timer and managed marker exist.
@@ -249,6 +254,7 @@ def main():
     # usable and the parent may retry later via Games & Learning.
     game_ids = validate_game_ids(data.get('games', []))
     if game_ids:
+        print('SETUP_PROGRESS:Installing optional learning games…', flush=True)
         print('Installing selected free games from Linux Mint repositories…', flush=True)
         added, present, errors = install_selected(game_ids)
         print('Optional games: ' + str(len(added)) + ' installed, ' +
@@ -259,6 +265,7 @@ def main():
                   'were not downloaded. Open ParentPilot Games & Learning from '
                   'the adult Applications menu to retry.', flush=True)
     if data.get('kodi', False):
+        print('SETUP_PROGRESS:Installing optional Kodi Media Centre…', flush=True)
         print('Installing selected Kodi Media Centre from the official APT repository…', flush=True)
         added, present, errors = install_selected_media(['kodi'])
         if errors:
@@ -267,6 +274,7 @@ def main():
         else:
             print('Kodi: ' + ('installed' if added else 'already installed') +
                   '. Open it from Sound & Video in the normal Applications menu.', flush=True)
+    print('SETUP_PROGRESS:Family setup completed', flush=True)
     print('SUCCESS: ParentPilot is installed for '+name+'.\\n')
     print('The child desktop will be ready next time they sign in. Parental controls are paused until approved.')
     print('Browse to https://<laptop-ip>:8743 from your phone, or use the ParentPilot Android app on the same Wi-Fi.')
