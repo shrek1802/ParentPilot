@@ -43,6 +43,7 @@ try:
     )
     assert app.install_btn.winfo_width() > 100
     assert app.kodi_test_btn.winfo_exists(), 'Separate Flatpak trial option is missing'
+    assert app.kodi_remove_btn.winfo_exists(), 'Safe Kodi Flatpak removal button missing'
     assert app.progress.winfo_ismapped(), 'Live progress bar must always be visible'
     assert not app.activity_bar.winfo_ismapped(), 'Busy indicator is initially stopped'
     app.media_checks['kodi'].set(True)
@@ -83,7 +84,19 @@ try:
     assert app.kodi_test_btn.cget('state')=='normal'
     assert not app.running
     assert app.install_btn.cget('state')=='normal'
-    print('PASS: isolated Kodi Flatpak trial progress and preserved APT install actions')
+    # Removing a trial must not affect ordinary APT app controls.
+    app.install_kind = 'kodi'
+    app.kodi_action = 'remove'
+    app.start_progress(1)
+    app.process_test_line('PARENTPILOT_KODI_TEST:remove:Removing only the newer Kodi Flatpak test…')
+    assert 'Removing only' in app.status.get()
+    with patch.object(games_gui.messagebox,'showinfo'):
+        app.finish_test_kodi(0)
+    assert app.status.get() == 'Newer Kodi test removed'
+    assert app.kodi_remove_btn.cget('state') == 'normal'
+    assert app.kodi_test_btn.cget('state') == 'normal'
+    assert app.install_btn.cget('state') == 'normal'
+    print('PASS: isolated Kodi Flatpak install/removal and preserved APT install actions')
     print('PASS: visible progress, live per-app milestones, failure recovery')
     print('PASS: 15 optional checkboxes, footer visible at ' +
           f'{root.winfo_screenwidth()}x{root.winfo_screenheight()}')
