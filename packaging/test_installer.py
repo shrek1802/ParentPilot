@@ -129,8 +129,8 @@ with tempfile.TemporaryDirectory() as d:
     assert not (home/'.config/menus/parentpilot.menu').exists()
     assert not (apps/'parentpilot-files.desktop').exists()
     assert not (apps/'parentpilot-logout.desktop').exists()
-    assert x.find(".//property[@name='panel-1']/property[@name='size']").get('value') == '44'
-    assert x.find(".//property[@name='panel-1']/property[@name='icon-size']").get('value') == '32'
+    assert x.find(".//property[@name='panel-1']/property[@name='size']").get('value') == '40'
+    assert x.find(".//property[@name='panel-1']/property[@name='icon-size']").get('value') == '22'
     assert x.find(".//property[@name='plugin-17']").get('value') == 'tasklist'
     assert x.find(".//property[@name='plugin-21']/property[@name='icon-size']").get('value') == '20'
     assert x.find(".//property[@name='plugin-22']/property[@name='digital-format']").get('value') == '%H:%M'
@@ -185,15 +185,49 @@ with tempfile.TemporaryDirectory() as d:
     before=panel_path.read_bytes()
     from unittest.mock import patch
     from types import SimpleNamespace
+    recorded=[]
+    current={
+        '/panels/panel-1/size':'44',
+        '/panels/panel-1/icon-size':'32'
+    }
+    def run_xfconf(args, **kwargs):
+        recorded.append(args)
+        assert args[:4]==['/usr/bin/xfconf-query','-c','xfce4-panel','-p']
+        assert 'plugin-ids' not in ' '.join(args)
+        assert 'launcher' not in ' '.join(args)
+        key=args[4]
+        if '-s' in args:
+            current[key]=args[-1]
+            return SimpleNamespace(returncode=0,stdout='',stderr='')
+        return SimpleNamespace(returncode=0,stdout=current[key]+'\n',stderr='')
     with patch.object(cp.os, 'geteuid', return_value=1000), \
          patch.object(cp.os, 'getuid', return_value=1000), \
          patch.object(cp.pwd, 'getpwuid', return_value=SimpleNamespace(pw_dir=str(home),pw_gid=1000)):
         cp.repair_child_panel()
-        assert cp.apply_session_panel(home=home, runner=lambda *a,**k: (
-            (_ for _ in ()).throw(AssertionError('XFCE must not be restarted'))))
-    assert panel_path.read_bytes() == before, 'The updater overwrote a pinned Kodi launcher'
+        assert cp.xfconf_commands_for_panel(home)==[
+            ('/panels/panel-1/size','44','40'),
+            ('/panels/panel-1/icon-size','32','22')]
+        assert cp.apply_session_panel(home=home,runner=run_xfconf)
+        assert current=={
+            '/panels/panel-1/size':'40',
+            '/panels/panel-1/icon-size':'22'}
+        recorded_before=list(recorded)
+        assert cp.apply_session_panel(home=home,runner=run_xfconf)
+        assert recorded==recorded_before, 'One-time migration ran twice'
+        assert (home/cp.PANEL_SIZE_MARKER).is_file()
+        # A child's manually customised panel size is explicitly preserved.
+        (home/cp.PANEL_SIZE_MARKER).unlink()
+        current['/panels/panel-1/size']='58'
+        current['/panels/panel-1/icon-size']='18'
+        previous=len(recorded)
+        assert cp.apply_session_panel(home=home,runner=run_xfconf)
+        assert len(recorded)==previous+2
+        assert current['/panels/panel-1/size']=='58'
+        assert current['/panels/panel-1/icon-size']=='18'
+        assert (home/cp.PANEL_SIZE_MARKER).is_file()
+    assert panel_path.read_bytes() == before, 'An update overwrote custom pinned Kodi or panel XML'
     assert (pinned/'kodi.desktop').is_file()
-    assert cp.xfconf_commands_for_panel(home) == [], 'Upgrade must not rewrite XFCE plugin IDs'
+    assert cp.xfconf_commands_for_panel(home) == [], 'One-time sizing change must stay complete'
     for item in ['launcher-10/parentpilot-browser.desktop',
                  'launcher-11/thunar.desktop',
                  'launcher-12/parentpilot-youtube.desktop',
