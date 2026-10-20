@@ -8,7 +8,6 @@ The distinct test launcher is written only after installation succeeds.
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 
@@ -57,6 +56,108 @@ def flathub_origin(available_remotes):
         if len(parts) >= 2 and parts[0] == REMOTE:
             return parts[1].rstrip('/')
     return None
+
+
+def parse_installed_version(info):
+    """The portable 'flatpak info' output can include a human Version field.
+
+    '--show-version' is NOT a Flatpak info flag (including on Mint 22).
+    A missing/unknown version is not an installation failure.
+    """
+    found = re.search(r'(?im)^\\s*Version:\\s*([0-9][0-9A-Za-z_.+-]{0,44})\\s*
+    if target.is_symlink():
+        raise RuntimeError('Refusing to replace a linked Kodi test shortcut.')
+    if target.exists() and target.read_text(encoding='utf8') != DESKTOP_ENTRY:
+        raise RuntimeError('An unrelated Kodi test launcher already exists.')
+    target.write_text(DESKTOP_ENTRY, encoding='utf8')
+    target.chmod(0o644)
+
+
+def install_test(runner=subprocess.run, flatpak_exists=None, launcher=write_launcher):
+    if flatpak_exists is None:
+        flatpak_exists = Path(FLATPAK).is_file()
+    if not flatpak_exists:
+        announce('flatpak', 'Installing the Flatpak manager from Linux Mint APT…')
+        run_checked([APT, 'install', '-y', '--no-install-recommends', 'flatpak'],
+                    timeout=300, runner=runner)
+
+    announce('check', 'Looking for Kodi installed by an earlier test…')
+    already_installed = installed_stable_kodi(runner=runner)
+    if already_installed is not None:
+        # No download, no reinstallation: the previous attempt likely stopped
+        # because '--show-version' was not supported, after Kodi was installed.
+        launcher()
+        announce('ready', 'Kodi ' + already_installed +
+                 ' was already installed. Open Kodi (New Version Test) from Applications → Multimedia.')
+        return already_installed
+
+    announce('remote', 'Checking the official signed Flathub repository…')
+    run_checked([FLATPAK, '--system', 'remote-add', '--if-not-exists',
+                 REMOTE, REMOTE_URL], timeout=90, runner=runner)
+    remotes = run_checked(
+        [FLATPAK, 'remotes', '--system', '--columns=name,url'],
+        timeout=45, runner=runner)
+    if flathub_origin(remotes) not in ORIGINS:
+        raise RuntimeError('The existing Flathub remote has an unexpected URL. Installation stopped.')
+
+    announce('install', 'Downloading and installing stable Kodi Flatpak and its runtime…')
+    # Can take several minutes on older laptops. Flatpak will install missing
+    # signed runtimes. This installs system-wide so the CHILD can use the app,
+    # not just the adult account. Existing distro Kodi is untouched.
+    run_checked([FLATPAK, '--system', 'install', '-y', '--noninteractive',
+                 REMOTE, APP_REF], timeout=2400, runner=runner)
+
+    announce('check', 'Verifying the installed Kodi with supported Flatpak commands…')
+    version = installed_stable_kodi(runner=runner)
+    if version is None:
+        raise RuntimeError('Flatpak reported success, but Kodi is not installed system-wide.')
+    launcher()
+    announce('ready', 'Installed Kodi ' + version +
+             '. Open Kodi (New Version Test) from Applications → Multimedia.')
+    return version
+
+
+def main():
+    if os.geteuid() != 0 or sys.argv[1:] != ['--install-test']:
+        raise RuntimeError('Only the adult ParentPilot Control Centre can install a Kodi trial.')
+    validate_adult_origin()
+    if not parentpilot_configured():
+        raise RuntimeError('This laptop has not completed ParentPilot family setup.')
+    install_test()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError,
+            subprocess.SubprocessError, subprocess.TimeoutExpired) as exc:
+        print('Kodi Flatpak test stopped: ' + str(exc), file=sys.stderr, flush=True)
+        sys.exit(1)
+,
+                      info or '')
+    return found.group(1) if found else 'version not reported'
+
+
+def installed_stable_kodi(runner=subprocess.run):
+    """Verify installation with long-supported Flatpak info flags.
+
+    An installed package can be present already when an earlier ParentPilot
+    installer failed only during its now-fixed version verification.
+    """
+    result = runner([FLATPAK, 'info', '--system', '--show-ref', APP],
+                    capture_output=True, text=True, check=False, timeout=50)
+    if result.returncode != 0:
+        return None
+    ref = (result.stdout or '').strip()
+    if not re.fullmatch(r'app/tv\\.kodi\\.Kodi/[A-Za-z0-9_]+/stable', ref):
+        raise RuntimeError('An unexpected Kodi Flatpak ref was found. No changes were made.')
+    origin = run_checked([FLATPAK, 'info', '--system', '--show-origin', APP],
+                         timeout=50, runner=runner)
+    if origin != REMOTE:
+        raise RuntimeError('Existing Kodi Flatpak did not come from the official Flathub remote.')
+    info = run_checked([FLATPAK, 'info', '--system', APP],
+                       timeout=50, runner=runner)
+    return parse_installed_version(info)
 
 
 def write_launcher(target=SHORTCUT):
