@@ -1,0 +1,105 @@
+name: Publish ParentPilot Linux Preview 20
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview20.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39412938283
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 1354a4f2f90eb5ad887bb4e3efe5e6d31b9f45ad
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39412938283 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview20 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview20_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview20'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview20_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 20 — refreshed family setup and live Games progress
+
+          The ParentPilot Games & Learning and Family Setup windows now match the more professional dark updater style.
+
+          ### Games & Learning
+          - Cleaner ParentPilot header, distinct game and media-player sections and installed/available status labels.
+          - An always-visible progress panel and sticky Install button on small XFCE screens.
+          - Live **checking / installing / installed / already installed / failed** messages for each explicitly selected APT package.
+          - A progress bar for the real number of selected apps processed, plus an animated indicator while a download or installation is active. No invented APT download percentage.
+          - Optional expandable activity details and explicit success or failure messages.
+          - Password approval, allowlisted APT packages, no removals, Kodi optional and VLC preserved.
+
+          ### Family Setup
+          - Refreshed ParentPilot identity, clear four-step progress navigation, compact review cards and better spacing.
+          - More accessible 800x480 / 1024x600 layouts.
+          - Live setup-stage messages and an animated setup indicator while administrator-approved provisioning is underway.
+          - The same preflight, password/PIN validation, child-account safeguards, screen-time service, settings and optional app selections remain intact.
+          - Never run Family Setup again on an existing configured ParentPilot machine. Existing families use the adult Games & Learning app.
+
+          ### Upgrading
+          Log in to the adult account, open **ParentPilot Updates**, select the **preview** channel, check for updates, and install Preview 20. Allow child sign-out only after saving open work. Reopen the Games & Learning app to use the new progress screen.
+
+          This release was built from the already-tested source commit `1354a4f2f90eb5ad887bb4e3efe5e6d31b9f45ad`. GitHub Actions passed installer security, UI smoke checks on both compact screens, Kodi package discovery, timer/lock behaviour, and Debian package inspection. Full physical testing on the Dell laptop, including an actual long APT download, remains to be confirmed.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview20 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview20 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 20 - refreshed setup and live games progress"
+          else
+            gh release create v0.5.0-preview20 \
+              publish/parentpilot_0.5.0.preview20_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target 1354a4f2f90eb5ad887bb4e3efe5e6d31b9f45ad \
+              --title "ParentPilot Linux Preview 20 - refreshed setup and live games progress" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview20 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
