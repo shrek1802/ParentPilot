@@ -1,0 +1,96 @@
+name: Publish ParentPilot Linux Preview 18
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview18.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39408759037
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 709176a89531a1b144eb248bb268c26602ddffe4
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39408759037 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview18 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview18_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview18'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview18_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 18 — optional Kodi Media Centre
+
+          Adds Kodi Media Centre as an optional, administrator-approved APT install in the existing ParentPilot app.
+
+          - Family Setup has a separate **Media Players** option: Kodi Media Centre (off by default).
+          - The adult **Games & Learning** app has a separate Media Players section for existing families. No need to rerun Family Setup.
+          - Installs only the Ubuntu/Linux Mint `kodi` package with `apt-get install -y --no-install-recommends kodi`, after an administrator approves PolicyKit.
+          - Does not add Kodi PPAs, extra repositories, unofficial streaming add-ons or plugins.
+          - Kodi appears through the distribution's existing menu entry in **Sound & Video / Multimedia**, not as an auto-launched replacement desktop.
+          - VLC remains installed and available as another local media player.
+          - Kodi runs inside the same XFCE/X11 child desktop as other apps, under the existing ParentPilot session-time restrictions.
+          - No changes to existing Linux accounts, passwords, parent PINs, screen-time limits, saved screenshots or other installed games.
+
+          **Updating an existing laptop:** Log in to the adult account, open ParentPilot Updates, select Preview, and install Preview 18. Then open **ParentPilot Games & Learning**, scroll to **Media Players**, tick Kodi, and approve the administrator authentication prompt.
+
+          **Compatibility:** Official Ubuntu 24.04 `kodi` package is available in Universe; intended for regular SD/720p and compatible H.264 1080p playback on older Intel laptops, not 4K/high-bitrate HEVC. Actual GPU playback and whether the full-screen pause overlay covers a playing video still require verification on the Dell machine. Do not choose a separate Kodi login session, since ParentPilot supervises the XFCE desktop session.
+
+          Automated package checks, UI regressions and timer/lock tests passed on GitHub Actions. Kodi was not played on the physical Dell as part of these CI tests.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview18 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Preview 18 is already published. Refusing to overwrite."
+            exit 1
+          fi
+          gh release create v0.5.0-preview18 \
+            publish/parentpilot_0.5.0.preview18_all.deb publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 709176a89531a1b144eb248bb268c26602ddffe4 \
+            --title "ParentPilot Linux Preview 18 - restore Mint Start menu" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --prerelease
+          gh release view v0.5.0-preview18 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
