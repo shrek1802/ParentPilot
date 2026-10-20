@@ -1,4 +1,5 @@
 name: Publish ParentPilot Linux Preview 28
+# Publishes only the verified Preview 28 build artifact.
 
 on:
   push:
