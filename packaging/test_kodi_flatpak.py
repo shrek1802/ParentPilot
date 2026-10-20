@@ -140,6 +140,64 @@ except RuntimeError:
     pass
 assert 'unsafe remote' not in launches
 
+# The optional removal is distinct from install, scoped to the system app,
+# and must NOT remove classic APT Kodi, the Flatpak manager or any user data.
+removed=[]
+def remover(args, **kwargs):
+    removed.append(args)
+    return done()
+with tempfile.TemporaryDirectory() as folder:
+    dest=Path(folder)/'trial.desktop'
+    trial.write_launcher(dest)
+    with patch.object(trial,'installed_stable_kodi',return_value='21.3'):
+        result=trial.remove_test(runner=remover,flatpak_exists=True,
+                                 remove_launcher=lambda:trial.remove_test_launcher(dest))
+    assert result is True
+    assert removed==[
+        ['/usr/bin/flatpak','uninstall','--system','--app','-y',
+         '--noninteractive','tv.kodi.Kodi']
+    ]
+    assert not dest.exists()
+    assert all('kodi' not in item for item in removed[0] if item in ('apt-get','--delete-data'))
+    assert '--delete-data' not in removed[0]
+    assert '--unused' not in removed[0]
+    assert 'apt-get' not in removed[0]
+    assert trial.remove_test_launcher(dest) is False
+    # Already removed? Still clean the stale generated shortcut without
+    # invoking APT or trying to remove other apps.
+    trial.write_launcher(dest)
+    removed.clear()
+    with patch.object(trial,'installed_stable_kodi',return_value=None):
+        assert trial.remove_test(runner=remover,flatpak_exists=True,
+                                 remove_launcher=lambda:trial.remove_test_launcher(dest)) is False
+    assert not removed
+    assert not dest.exists()
+    dest.write_text('Custom user shortcut')
+    try:
+        trial.remove_test_launcher(dest)
+        raise AssertionError('Removed a custom launcher')
+    except RuntimeError:
+        pass
+    assert dest.read_text() == 'Custom user shortcut'
+    dest.unlink()
+    dest.symlink_to(Path(folder)/'different')
+    try:
+        trial.remove_test_launcher(dest)
+        raise AssertionError('Removed symlinked launcher')
+    except RuntimeError:
+        pass
+    assert dest.is_symlink()
+    dest.unlink()
+
+# Fail closed if an unexpected origin is detected. No removal is performed.
+with patch.object(trial,'installed_stable_kodi',side_effect=RuntimeError('Untrusted origin')):
+    try:
+        trial.remove_test(runner=remover,flatpak_exists=True)
+        raise AssertionError('Removed Kodi without checking its source')
+    except RuntimeError:
+        pass
+assert not removed
+
 with patch.object(trial.os, 'geteuid', return_value=0), \
      patch.object(trial.sys, 'argv', ['kodi_flatpak_test.py', '--install-test']), \
      patch.object(trial, 'validate_adult_origin', return_value='adult') as adult, \
@@ -149,6 +207,14 @@ with patch.object(trial.os, 'geteuid', return_value=0), \
     adult.assert_called_once()
     work.assert_called_once()
 
+with patch.object(trial.os,'geteuid',return_value=0), \
+     patch.object(trial.sys,'argv',['kodi_flatpak_test.py','--remove-test']), \
+     patch.object(trial,'validate_adult_origin',return_value='adult'), \
+     patch.object(trial,'parentpilot_configured',return_value=True), \
+     patch.object(trial,'remove_test',return_value=True) as remove_action:
+    trial.main()
+    remove_action.assert_called_once()
+
 with patch.object(trial.os, 'geteuid', return_value=1000):
     try:
         trial.main()
@@ -156,4 +222,4 @@ with patch.object(trial.os, 'geteuid', return_value=1000):
     except RuntimeError:
         pass
 
-print('PASS: old Flatpak compatibility, detect previous install without downloads, official origin and separate launcher')
+print('PASS: Flathub Kodi installation and safe removal, original Kodi untouched, guarded launcher cleanup')
