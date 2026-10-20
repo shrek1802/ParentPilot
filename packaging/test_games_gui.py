@@ -32,6 +32,8 @@ root = app.root
 try:
     root.update_idletasks()
     assert len(app.checks) == 8
+    assert list(app.media_checks) == ['kodi']
+    assert not app.media_checks['kodi'].get()
     assert not any(v.get() for v in app.checks.values()), 'No surprise installs'
     assert app.install_btn.winfo_ismapped()
     button_bottom = app.install_btn.winfo_rooty() + app.install_btn.winfo_height()
