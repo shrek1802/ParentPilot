@@ -1,0 +1,90 @@
+name: Publish ParentPilot Linux Preview 17
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview17.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39407142179
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 46fe0f2e4dbd53334cba7d8f24d9dd710ea92b07
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39407142179 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview17 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview17_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview17'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview17_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 17 — native Linux Mint Whisker Start menu
+
+          Fix for Dell Inspiron N5110 Linux Mint XFCE: older ParentPilot installers replaced the normal Mint Whisker Start menu with the basic XFCE Applications menu. Preview 17 changes back to the genuine Whisker plugin with search, favourites and all application categories.
+
+          - Explicitly installs the xfce4-whiskermenu-plugin dependency.
+          - Uses Linux Mint Whisker defaults where installed, preserving existing child menu preferences where available.
+          - Restores the original menu on the child's next XFCE login with a one-time panel refresh.
+          - Keeps the full normal Applications menu: VLC, Office, file manager, installed games, Games & Learning and other learning tools.
+          - Keeps Chromium as intended browser; hiding alternative browser shortcuts is a cosmetic restriction only.
+          - Does not remove or reset the child account, timer, PIN, saved screenshots, other software, or mobile access.
+          - Does not affect the adult administrator panel.
+
+          **Updating:** Log into the adult account. Open ParentPilot Updates, select Preview, check for updates and install Preview 17. Save child work before approving sign-out. Sign back into the child account after success to load the corrected Whisker Start menu.
+
+          Automated tests and DEB packaging checks passed. Visual behaviour must still be tested on the Dell laptop. Do not reinstall Linux or rerun Family Setup.
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview17 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Preview 17 is already published. Refusing to overwrite."
+            exit 1
+          fi
+          gh release create v0.5.0-preview17 \
+            publish/parentpilot_0.5.0.preview17_all.deb publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 46fe0f2e4dbd53334cba7d8f24d9dd710ea92b07 \
+            --title "ParentPilot Linux Preview 17 - restore Mint Start menu" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --prerelease
+          gh release view v0.5.0-preview17 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
