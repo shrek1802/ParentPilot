@@ -47,6 +47,7 @@ try:
     app.media_checks['kodi'].set(True)
     assert app.selection.get() == '1 app selected'
     app.start_progress(2)
+    root.update_idletasks()
     assert app.running and app.total == 2
     assert app.activity_bar.winfo_ismapped()
     assert app.install_btn.cget('state') == 'disabled'
