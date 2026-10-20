@@ -259,8 +259,10 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     prop(panel,'position-locked','bool','true')
     # Full learning desktop: normal application menu + running-window buttons,
     # followed by centred family quick launches and a compact status tray.
-    prop(panel,'size','uint',44)
-    prop(panel,'icon-size','uint',32)
+    # Match Linux Mint's compact panel rather than the old oversized 44/32
+    # ParentPilot dock. The power-manager plugin uses the panel icon size too.
+    prop(panel,'size','uint',40)
+    prop(panel,'icon-size','uint',22)
     prop(panel,'length','uint',100)
     prop(panel,'length-adjust','bool','false')
     prop(panel,'autohide-behavior','uint',0)
@@ -380,37 +382,74 @@ def repair_child_panel():
 
 
 
-# XFCE saves its panel in xfconf, not just xfce4-panel.xml. A resident xfconfd
-# process can keep the previous left-aligned layout after a package upgrade,
-# or overwrite edited XML when the child next signs in. Apply layout once in
-# the CHILD's own graphical session, through xfconf-query, after XFCE starts.
-LAYOUT_REVISION = 'mint-whisker-power-indicator-v8'
+# XFCE keeps a live copy of panel properties in xfconfd. For existing child
+# accounts, migrate only the two oversized ParentPilot defaults, never the
+# plugin IDs, launcher positions or any user-customised panel size.
+LAYOUT_REVISION = 'mint-compact-panel-icons-v9'
+LEGACY_PANEL_SIZE = '44'
+LEGACY_ICON_SIZE = '32'
+MINT_PANEL_SIZE = '40'
+MINT_ICON_SIZE = '22'
+PANEL_SIZE_MARKER = '.config/parentpilot/mint-compact-panel-icons-v9'
 
 
 def xfconf_commands_for_panel(home):
-    """Never reapply a fixed plugin list over custom pins.
+    """Return only scoped icon-size updates for a ParentPilot-managed panel.
 
-    Modern ParentPilot does not need to change the panel on upgrades. The
-    fresh setup writes its XML once and XFCE owns it thereafter. In particular
-    do not call xfconf-query on /panels/panel-1/plugin-ids, or overwrite a
-    launcher that a family has pinned (for example Kodi).
+    Pairs contain the xfconf property path, the exact legacy default and its
+    replacement. Never touch the child's panel plugin list or taskbar pins.
     """
-    return []
-
+    home = Path(home)
+    if not existing_parentpilot_panel(home):
+        return []
+    marker = home / PANEL_SIZE_MARKER
+    if marker.exists() or marker.is_symlink():
+        return []
+    return [
+        ('/panels/panel-1/size', LEGACY_PANEL_SIZE, MINT_PANEL_SIZE),
+        ('/panels/panel-1/icon-size', LEGACY_ICON_SIZE, MINT_ICON_SIZE),
+    ]
 
 
 def apply_session_panel(home=None, runner=subprocess.run):
-    """Legacy child autostart is now a no-op to preserve a customised panel.
+    """One-time, minimally scoped XFCE Mint-like icon size migration.
 
-    No xfconf writes or panel restarts; existing Kodi/taskbar pins are safe.
+    Called under the CHILD's graphical XFCE session. Change a size only if
+    its live xfconf value still equals ParentPilot's exact previous default;
+    custom panel sizes and every launcher/clock/systray configuration stay put.
+    No xfce4-panel --restart, xfconf --reset, XML regeneration, or logouts.
     """
     if os.geteuid() == 0:
-        raise RuntimeError('Refusing to manage a root XFCE panel.')
+        raise RuntimeError('Refusing to change a root XFCE panel.')
     account = pwd.getpwuid(os.getuid())
-    if not existing_parentpilot_panel(Path(home or account.pw_dir)):
-        print('SKIPPED: this is not a managed child panel.')
-        return False
-    print('ParentPilot leaves pinned XFCE panel apps unchanged.')
+    home = Path(home or account.pw_dir)
+    changes = xfconf_commands_for_panel(home)
+    if not changes:
+        print('ParentPilot leaves existing panel sizing and pinned icons untouched.')
+        return bool(existing_parentpilot_panel(home))
+
+    for key, previous, new in changes:
+        get = runner(['/usr/bin/xfconf-query', '-c', 'xfce4-panel',
+                      '-p', key], check=False, capture_output=True,
+                     text=True, timeout=10)
+        if get.returncode != 0:
+            raise RuntimeError('Could not read child XFCE panel size; retry at next login.')
+        if get.stdout.strip() != previous:
+            # Family has customised this setting; never override.
+            continue
+        update = runner(['/usr/bin/xfconf-query', '-c', 'xfce4-panel',
+                         '-p', key, '-s', new], check=False,
+                        capture_output=True, text=True, timeout=10)
+        if update.returncode != 0:
+            raise RuntimeError('Could not apply compact XFCE icon sizing; retry at next login.')
+    # Record the completed one-time migration in the child's own home.
+    # The updater does NOT alter the offline panel XML or any pinned launcher.
+    marker = home / PANEL_SIZE_MARKER
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    if marker.is_symlink():
+        raise RuntimeError('Unsafe panel migration marker.')
+    marker.write_text(LAYOUT_REVISION + '\n', encoding='utf8')
+    print('ParentPilot matched Mint-like icon sizes; taskbar pins preserved.')
     return True
 
 
