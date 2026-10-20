@@ -1,0 +1,97 @@
+name: Publish ParentPilot Linux Preview 21
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview21.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39414152797
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 6c2b535a240bb9304234d2f34aa6c10b9d41a412
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39414152797 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview21 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview21_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview21'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview21_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 21 — restore child battery indicator
+
+          Restores the native Xfce Power Manager battery indicator on ParentPilot-managed child laptops.
+
+          - Adds the official Ubuntu/Linux Mint `xfce4-power-manager-plugins` dependency (which also pulls in the Xfce Power Manager if needed).
+          - Adds the real Xfce `power-manager-plugin` next to the child's status tray and clock, using a dedicated panel plugin rather than an imitation widget.
+          - Repairs only an existing recognised ParentPilot-managed child panel. It does not replace the adult's panel or touch custom/unmanaged profiles.
+          - Refreshes the managed child panel at the next child XFCE login using revision `mint-whisker-power-indicator-v8`, to avoid using a stale panel cache.
+          - Preserves the Mint Whisker menu, VLC, optional Kodi, games, ParentPilot timer/lock, adult PIN, screen-time allowances, existing accounts and saved screenshots.
+          - If there is no physical battery detected by UPower, the native plugin cannot report a battery; battery presence and icon rendering still need confirming on the Dell.
+
+          **Existing laptop:** Sign into the administrator account, open ParentPilot Updates, choose the preview channel, check updates and install Preview 21. Save any open child work before approving sign-out. Then sign into the child account to reload the updated panel. Do NOT run Family Setup again.
+
+          GitHub Actions verified the build, native XFCE package availability, the managed child panel configuration and next-login XFCE commands, timer/lock regressions, compact UI checks, and the Debian artifact. Physical battery and charging icon appearance has not yet been verified on the Dell.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview21 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview21 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 21 - restore child battery indicator"
+          else
+            gh release create v0.5.0-preview21 \
+              publish/parentpilot_0.5.0.preview21_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target 6c2b535a240bb9304234d2f34aa6c10b9d41a412 \
+              --title "ParentPilot Linux Preview 21 - restore child battery indicator" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview21 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
