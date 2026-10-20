@@ -132,6 +132,9 @@ with tempfile.TemporaryDirectory() as d:
     assert x.find(".//property[@name='plugin-17']").get('value') == 'tasklist'
     assert x.find(".//property[@name='plugin-21']/property[@name='icon-size']").get('value') == '20'
     assert x.find(".//property[@name='plugin-22']/property[@name='digital-format']").get('value') == '%H:%M'
+    # Power Manager is a native XFCE plugin, not an unverified script or a
+    # modified adult desktop. It remains beside the status tray and clock.
+    assert x.find(".//property[@name='plugin-23']").get('value') == 'power-manager-plugin'
 
     # Netflix is optional and the child's existing YouTube choice is kept.
     with tempfile.TemporaryDirectory() as second:
@@ -154,7 +157,7 @@ with tempfile.TemporaryDirectory() as d:
     ids=[int(v.attrib['value']) for v in plugins.findall('value')]
     assert ids[:3] == [1, 17, 18]
     assert ids.index(18) < ids.index(10) < ids.index(14) < ids.index(19) < ids.index(21)
-    assert ids[-1] == 22
+    assert ids[-3:] == [21, 23, 22], 'Status tray, battery and clock must be on the right'
     for key in ('plugin-18','plugin-19'):
         spacer=x.find(f".//property[@name='{key}']/property[@name='expand']")
         assert spacer is not None and spacer.attrib['value'] == 'true'
@@ -200,6 +203,9 @@ with tempfile.TemporaryDirectory() as d:
     assert any('/plugins/plugin-14/items' in c for c in commands)
     assert any('/plugins/plugin-21/icon-size' in c and c[-1] == '20' for c in commands)
     assert any('/plugins/plugin-22/digital-format' in c and c[-1] == '%H:%M' for c in commands)
+    assert any('/plugins/plugin-23' == c[4] and c[-1] == 'power-manager-plugin'
+               for c in commands), 'Child session must load native XFCE battery plugin'
+    assert cp.LAYOUT_REVISION == 'mint-whisker-power-indicator-v8'
     assert all(c[0] == 'xfconf-query' and c[2] == 'xfce4-panel' for c in commands)
     with patch.object(cp.os, 'geteuid', return_value=1000), \
          patch.object(cp.os, 'getuid', return_value=1000), \

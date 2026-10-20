@@ -265,7 +265,10 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     prop(panel,'length-adjust','bool','false')
     prop(panel,'autohide-behavior','uint',0)
     launcher_ids=[10,11]+([12] if youtube else [])+([13] if netflix else [])+[14]
-    plugin_ids=[1,17,18,*launcher_ids,19,21,22]
+    # The dedicated XFCE Power Manager plugin provides a reliable battery
+    # indicator even when the status tray does not expose a power icon.
+    # Package xfce4-power-manager-plugins is an explicit DEB dependency.
+    plugin_ids=[1,17,18,*launcher_ids,19,21,23,22]
     array(panel,'plugin-ids','int',plugin_ids)
     plugins=prop(root,'plugins','empty','')
     # Linux Mint XFCE's original full-featured Start menu is Whisker,
@@ -287,10 +290,12 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     for number in launcher_ids:
         p=prop(plugins,f'plugin-{number}','string','launcher')
         array(p,'items','string',[labels[number]])
-    # Status icons and clock are kept in their own natural-size area.
+    # Status icons, a native battery indicator and clock are kept together
+    # on the right. No polling applet or elevated background process.
     tray = prop(plugins,'plugin-21','string','systray')
     prop(tray, 'icon-size', 'int', 20)
     prop(tray, 'single-row', 'bool', 'true')
+    prop(plugins,'plugin-23','string','power-manager-plugin')
     clock = prop(plugins,'plugin-22','string','clock')
     prop(clock, 'mode', 'uint', 2)
     prop(clock, 'digital-format', 'string', '%H:%M')
@@ -374,7 +379,7 @@ def repair_child_panel():
 # process can keep the previous left-aligned layout after a package upgrade,
 # or overwrite edited XML when the child next signs in. Apply layout once in
 # the CHILD's own graphical session, through xfconf-query, after XFCE starts.
-LAYOUT_REVISION = 'mint-whisker-start-menu-v7'
+LAYOUT_REVISION = 'mint-whisker-power-indicator-v8'
 
 
 def xfconf_commands_for_panel(home):
@@ -389,8 +394,10 @@ def xfconf_commands_for_panel(home):
     # The only supported template: menu, equal expanding left/right spacers,
     # curated app launchers, notification tray, and clock. Never mutate a
     # generic XFCE panel or make guesses about plugin identifiers.
-    if (len(plugin_ids) < 8 or plugin_ids[:3] != [1, 17, 18] or
-            19 not in plugin_ids or plugin_ids[-2:] != [21, 22]):
+    # Only the exact known ParentPilot tray -> battery -> clock order is
+    # accepted; unmanaged or user-customised panels are left alone.
+    if (len(plugin_ids) < 9 or plugin_ids[:3] != [1, 17, 18] or
+            19 not in plugin_ids or plugin_ids[-3:] != [21, 23, 22]):
         return []
     if plugin_ids.index(19) <= 2:
         return []
@@ -416,6 +423,8 @@ def xfconf_commands_for_panel(home):
          '-n', '-t', 'int', '-s', '20'],
         [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-21/single-row',
          '-n', '-t', 'bool', '-s', 'true'],
+        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-23',
+         '-n', '-t', 'string', '-s', 'power-manager-plugin'],
         [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-22/mode',
          '-n', '-t', 'uint', '-s', '2'],
         [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-22/digital-format',
@@ -492,7 +501,7 @@ def apply_session_panel(home=None, runner=subprocess.run):
         marker.unlink(missing_ok=True)
         print('DEFERRED: XFCE panel restart unavailable; retrying next login.')
         return False
-    print('ParentPilot restored Linux Mint Whisker Start menu on child panel.')
+    print('ParentPilot refreshed Mint Whisker menu and battery indicator on the child panel.')
     return True
 
 
