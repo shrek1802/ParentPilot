@@ -28,6 +28,8 @@ GREEN = '#34d399'
 AMBER = '#fbbf24'
 RED = '#fca5a5'
 HELPER = '/usr/lib/parentpilot/games_install.py'
+KODI_TEST_HELPER = '/usr/lib/parentpilot/kodi_flatpak_test.py'
+KODI_STAGE = 'PARENTPILOT_KODI_TEST:'
 CATALOGUE = GAMES + MEDIA_PLAYERS
 BY_ENTRY = {item[0]: item for item in CATALOGUE}
 COMPLETED = {'already', 'installed', 'failed'}
@@ -64,6 +66,7 @@ class GamesGUI:
         self.root.configure(bg=BG)
         self.events = queue.Queue()
         self.running = False
+        self.install_kind = 'apt'
         self.total = 0
         self.completed = set()
         self.failed = []
@@ -212,6 +215,31 @@ class GamesGUI:
             for widget in (row, topline, check):
                 widget.bind('<MouseWheel>', lambda e: canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units'), add='+')
 
+        # Explicit, non-destructive side-by-side Kodi trial. This action
+        # never runs as part of selecting APT games or a ParentPilot update.
+        tk.Label(body, text='NEW KODI — SEPARATE TEST', bg=PANEL, fg=ACCENT,
+                 font=('Sans', 10, 'bold'), anchor='w').pack(fill='x', pady=(12, 5))
+        test_panel = tk.Frame(body, bg=INSET, padx=11, pady=10)
+        test_panel.pack(fill='x', pady=(0, 6))
+        tk.Label(test_panel, text='Kodi Flatpak trial (Flathub stable)',
+                 bg=INSET, fg=TEXT, font=('Sans', 10, 'bold'),
+                 anchor='w').pack(fill='x')
+        tk.Label(test_panel,
+                 text='Try a newer Kodi beside classic APT Kodi. Original Kodi, '
+                      'its settings and pinned taskbar icon are untouched. '
+                      'Separate library; sizeable Flatpak/runtime download. '
+                      'Test video and sound on the Dell before switching.',
+                 bg=INSET, fg=MUTED, font=('Sans', 9),
+                 justify='left', anchor='w',
+                 wraplength=max(225, width-105)).pack(fill='x', pady=(4, 8))
+        self.kodi_test_btn = tk.Button(
+            test_panel, text='Install newer Kodi for testing',
+            command=self.install_test_kodi, bg='#334155', fg=TEXT,
+            activebackground='#475569', activeforeground=TEXT,
+            font=('Sans', 9, 'bold'), relief='flat',
+            padx=10, pady=6)
+        self.kodi_test_btn.pack(anchor='w')
+
         self.root.after(120, self.poll)
 
     def update_selection(self):
@@ -256,6 +284,7 @@ class GamesGUI:
         self.progress_info.set('0 of ' + str(total) + ' apps completed')
         self.status.set('Waiting for administrator password…')
         self.install_btn.configure(state='disabled')
+        self.kodi_test_btn.configure(state='disabled')
         for check in self.row_checks:
             check.configure(state='disabled')
         self.activity_bar.pack(fill='x', pady=(4, 0))
@@ -281,6 +310,7 @@ class GamesGUI:
             parent=self.root,
         ):
             return
+        self.install_kind = 'apt'
         self.start_progress(count)
         self.set_detail('Waiting for administrator approval…')
         args = ['pkexec', '/usr/bin/python3', HELPER, '--from-manager']
@@ -303,6 +333,85 @@ class GamesGUI:
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
                 self.events.put(('error', str(exc)))
         threading.Thread(target=work, daemon=True).start()
+
+    def install_test_kodi(self):
+        if self.running:
+            return
+        if not messagebox.askyesno(
+            'Try newer Kodi beside classic Kodi',
+            'Install the stable Kodi Flatpak from the official Flathub repository '
+            'for testing? If necessary, Flatpak will first be installed from '
+            'Linux Mint/Ubuntu APT. The Flatpak/runtime download may be large.\n\n'
+            'This requires the administrator password and changes system-wide '
+            'packages, but DOES NOT remove classic Kodi, overwrite its settings, '
+            'replace the pinned Kodi icon or alter ParentPilot time limits.\n\n'
+            'Once installed, sign into the child account and open '
+            'Kodi (New Version Test) from the Applications menu.',
+            parent=self.root):
+            return
+        self.install_kind = 'kodi'
+        self.start_progress(1)
+        self.status.set('Preparing separate Kodi Flatpak test…')
+        self.progress_info.set('Download and installation may take several minutes.')
+        self.set_detail('Waiting for administrator approval…')
+
+        def work():
+            try:
+                with subprocess.Popen(
+                    ['pkexec', '/usr/bin/python3', KODI_TEST_HELPER, '--install-test'],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, errors='replace', bufsize=1
+                ) as process:
+                    for line in process.stdout:
+                        self.events.put(('kodi-line', line.rstrip('\r\n')))
+                    code = process.wait()
+                self.events.put(('kodi-done', code))
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                self.events.put(('kodi-error', str(exc)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def process_test_line(self, line):
+        if line.startswith(KODI_STAGE):
+            entry=line[len(KODI_STAGE):]
+            stage, _, detail=entry.partition(':')
+            if stage in ('flatpak', 'remote', 'install', 'check', 'ready'):
+                self.status.set(detail[:140])
+                self.add_detail(detail)
+            return
+        self.add_detail(line)
+
+    def finish_test_kodi(self, code, explanation=''):
+        self.running = False
+        self.activity_bar.stop()
+        self.activity_bar.pack_forget()
+        self.install_btn.configure(state='normal')
+        self.kodi_test_btn.configure(state='normal')
+        for item_id, check in zip(self.installed, self.row_checks):
+            if not self.installed[item_id]:
+                check.configure(state='normal')
+        if code == 0 and not explanation:
+            self.status.set('New Kodi test is ready')
+            self.progress.configure(value=1)
+            self.progress_info.set('Sign into the child account and start Kodi (New Version Test).')
+            messagebox.showinfo(
+                'Kodi Flatpak trial installed',
+                'Open Applications → Multimedia → Kodi (New Version Test) '
+                'on the child account. Try menus, 720p video and sound. '
+                'Classic Kodi is still installed, with its own settings and taskbar icon.',
+                parent=self.root)
+        else:
+            self.status.set('New Kodi test could not be installed')
+            self.progress_info.set('Classic Kodi remains available. Show details to diagnose.')
+            if explanation:
+                self.add_detail(explanation)
+            if not self.details_open:
+                self.toggle_details()
+            messagebox.showwarning('Kodi test was not installed',
+                                   'Kodi Flatpak could not be installed. '
+                                   'The existing APT Kodi has not been removed. '
+                                   'See the activity details for the problem.',
+                                   parent=self.root)
+        self.install_kind = 'apt'
 
     def process_line(self, line):
         if line.startswith(EVENT_PREFIX):
@@ -341,6 +450,7 @@ class GamesGUI:
         self.activity_bar.stop()
         self.activity_bar.pack_forget()
         self.install_btn.configure(state='normal')
+        self.kodi_test_btn.configure(state='normal')
         for item_id, check in zip(self.installed, self.row_checks):
             if not self.installed[item_id]:
                 check.configure(state='normal')
@@ -379,6 +489,12 @@ class GamesGUI:
                     self.finish(value)
                 elif kind == 'error':
                     self.finish(1, value)
+                elif kind == 'kodi-line':
+                    self.process_test_line(value)
+                elif kind == 'kodi-done':
+                    self.finish_test_kodi(value)
+                elif kind == 'kodi-error':
+                    self.finish_test_kodi(1, value)
         except queue.Empty:
             pass
         self.root.after(150, self.poll)

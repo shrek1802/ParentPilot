@@ -42,6 +42,7 @@ try:
         root.winfo_screenwidth(), root.winfo_screenheight(), button_bottom, window_bottom,
     )
     assert app.install_btn.winfo_width() > 100
+    assert app.kodi_test_btn.winfo_exists(), 'Separate Flatpak trial option is missing'
     assert app.progress.winfo_ismapped(), 'Live progress bar must always be visible'
     assert not app.activity_bar.winfo_ismapped(), 'Busy indicator is initially stopped'
     app.media_checks['kodi'].set(True)
@@ -69,6 +70,20 @@ try:
     app.root.update_idletasks()
     # Optional details appear when errors occur. All controls still fit.
     assert app.detail.winfo_ismapped()
+    # Check the Flatpak trial's real stage text and successful completion
+    # without initiating any actual download or changing Linux packages.
+    app.install_kind = 'kodi'
+    app.start_progress(1)
+    app.process_test_line('PARENTPILOT_KODI_TEST:install:Downloading Kodi Flatpak runtime…')
+    assert 'Downloading Kodi' in app.status.get()
+    app.process_test_line('PARENTPILOT_KODI_TEST:ready:Installed Kodi 21.3')
+    with patch.object(games_gui.messagebox, 'showinfo'):
+        app.finish_test_kodi(0)
+    assert app.progress['value']==1
+    assert app.kodi_test_btn.cget('state')=='normal'
+    assert not app.running
+    assert app.install_btn.cget('state')=='normal'
+    print('PASS: isolated Kodi Flatpak trial progress and preserved APT install actions')
     print('PASS: visible progress, live per-app milestones, failure recovery')
     print('PASS: 15 optional checkboxes, footer visible at ' +
           f'{root.winfo_screenwidth()}x{root.winfo_screenheight()}')

@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview25
+VERSION=0.5.0~preview26
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -66,6 +66,9 @@ install -m 0755 "$ROOT/packaging/parentpilot/screen_settings.py" "$STAGING/usr/l
 install -m 0644 "$ROOT/packaging/parentpilot/games_catalog.py" "$STAGING/usr/lib/parentpilot/games_catalog.py"
 install -m 0644 "$ROOT/packaging/parentpilot/games_gui.py" "$STAGING/usr/lib/parentpilot/games_gui.py"
 install -m 0755 "$ROOT/packaging/parentpilot/games_install.py" "$STAGING/usr/lib/parentpilot/games_install.py"
+# Optional parallel Kodi stable Flatpak trial. Installed only after explicit
+# adult approval in Games & Media; APT Kodi and its own settings stay intact.
+install -m 0755 "$ROOT/packaging/parentpilot/kodi_flatpak_test.py" "$STAGING/usr/lib/parentpilot/kodi_flatpak_test.py"
 cat > "$STAGING/usr/bin/parentpilot-games" <<'EOF'
 #!/bin/sh
 exec /usr/bin/python3 /usr/lib/parentpilot/games_gui.py "$@"
