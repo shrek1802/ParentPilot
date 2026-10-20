@@ -7,24 +7,25 @@ The catalogue favours older hardware, with optional marked 3D games.
 """
 
 GAMES = (
+    # Learning: good for older hardware.
     ('gcompris', 'GCompris', 'Learning', 'Reading, maths, memory and problem solving (larger download)', 'gcompris-qt'),
     ('tuxmath', 'Tux Maths', 'Learning', 'Arcade-style addition, subtraction and multiplication', 'tuxmath'),
     ('tuxtype', 'Tux Typing', 'Learning', 'Fun typing and keyboard practice', 'tuxtype'),
+    ('kgeography', 'KGeography', 'Learning', 'Maps, countries, capitals and flags (adds KDE educational libraries)', 'kgeography'),
+    # Creative: Minetest is heavier, but offline worlds work without server access.
     ('tuxpaint', 'Tux Paint', 'Creative', 'Draw, paint and explore colours', 'tuxpaint'),
+    ('ktuberling', 'KTuberling', 'Creative', 'Build pictures from colourful objects (adds KDE libraries)', 'ktuberling'),
+    ('minetest', 'Minetest (Luanti predecessor)', 'Creative', 'Minecraft-like offline worlds; heavier 3D game, try lowest graphics settings', 'minetest'),
+    # Logic and memory.
     ('pingus', 'Pingus', 'Puzzles', 'Lemmings-style logic, planning and problem solving', 'pingus'),
-    ('supertux', 'SuperTux', 'Just for fun', 'Lightweight 2D platform adventures', 'supertux'),
-    ('frozenbubble', 'Frozen Bubble', 'Just for fun', 'Colour-matching and aiming puzzle game', 'frozen-bubble'),
     ('sudoku', 'Sudoku', 'Puzzles', 'Number-placement logic puzzles', 'gnome-sudoku'),
-    # Optional expansion: packages verified in Ubuntu 24.04 official APT
-    # repositories. The old Intel GPU may struggle with 3D games, hence
-    # the performance labels. Never install unless an adult ticks them.
-    ('kgeography', 'KGeography', 'Learning', 'Maps, countries, capitals and flags (KDE educational libraries)', 'kgeography'),
-    ('blinken', 'Blinken', 'Puzzles', 'Memory and pattern game, like Simon Says (KDE libraries)', 'blinken'),
-    ('ktuberling', 'KTuberling', 'Creative', 'Build pictures from colourful shapes and objects (KDE libraries)', 'ktuberling'),
-    ('supertuxkart', 'SuperTuxKart', 'Just for fun', '3D kart racing; larger download and slower on older Intel graphics', 'supertuxkart'),
-    ('extremetuxracer', 'Extreme Tux Racer', 'Just for fun', 'Slide down snowy slopes in 3D; reduce graphics on older laptops', 'extremetuxracer'),
-    ('minetest', 'Minetest / Luanti (legacy package)', 'Creative', 'Offline block building; older Ubuntu release, try low graphics and local worlds', 'minetest'),
-    ('hedgewars', 'Hedgewars', 'Just for fun', 'Turn-based Worms-style strategy; fairly large game download', 'hedgewars'),
+    ('frozenbubble', 'Frozen Bubble', 'Puzzles', 'Colour-matching and aiming puzzle game', 'frozen-bubble'),
+    ('blinken', 'Blinken', 'Puzzles', 'Memory and pattern game, like Simon Says (adds KDE libraries)', 'blinken'),
+    # Optional fun. Three-dimensional games may run slowly on Intel HD 3000.
+    ('supertux', 'SuperTux', 'Just for fun', 'Lightweight 2D platform adventures', 'supertux'),
+    ('supertuxkart', 'SuperTuxKart', 'Just for fun', '3D kart racing; large download and may be slow on older Intel graphics', 'supertuxkart'),
+    ('extremetuxracer', 'Extreme Tux Racer', 'Just for fun', 'Slide down snowy slopes in 3D; reduce graphics quality if slow', 'extremetuxracer'),
+    ('hedgewars', 'Hedgewars', 'Just for fun', 'Turn-based Worms-style strategy; larger download', 'hedgewars'),
 )
 
 BY_ID = {game[0]: game for game in GAMES}
