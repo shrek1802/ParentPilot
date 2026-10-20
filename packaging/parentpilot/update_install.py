@@ -40,6 +40,15 @@ TRUSTED_DOWNLOAD_HOSTS = {
     'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'
 }
 
+# These machine-readable milestones are additive to the existing audit log.
+# The GUI translates known identifiers to helpful text; no secrets are sent.
+PROGRESS_PREFIX = 'PARENTPILOT_PROGRESS:'
+
+
+def report_progress(stage):
+    print(PROGRESS_PREFIX + stage, flush=True)
+
+
 
 def cmd(*args, timeout=120):
     return subprocess.run(args, check=True, capture_output=True, text=True, timeout=timeout)
@@ -391,31 +400,39 @@ def install(channel, expected_tag, allow_child_signout=False):
     if allow_child_signout:
         _, child_account = verified_child_account()
         verify_adult_approved_signout(child_account.pw_uid)
+    report_progress('verify')
     current = installed_version()
     release = fetch_updates(channel, current)
     if not release or release['tag'] != expected_tag:
         raise RuntimeError('Selected release is unavailable or is no longer the latest.')
     print('Verified release metadata for ' + release['version'], flush=True)
+    report_progress('download')
     with tempfile.TemporaryDirectory(prefix='parentpilot-update-') as work:
         directory = Path(work)
         archive = download_verified(release, directory)
+        report_progress('backup')
         backup = save_snapshot()
         try:
             # Do not sign out the child until the release was downloaded,
             # verified and the private recovery snapshot completed.
             signed_out = False
+            report_progress('signout')
             if allow_child_signout:
                 signed_out = sign_out_child_with_approval()
             block_reason = child_session_block_reason()
             if block_reason:
                 raise RuntimeError('Child session still running: ' + block_reason)
+            report_progress('install')
             print('Installing verified DEB through APT…', flush=True)
             cmd('apt-get', 'install', '-y', '--no-remove',
                 '--no-install-recommends', str(archive), timeout=300)
+            report_progress('deploy')
             deploy_program_files()
             repair_managed_child_panel()
+            report_progress('health')
             health_check()
         except Exception:
+            report_progress('restore')
             print('Update failed. Restoring previously deployed service and data…', flush=True)
             try:
                 restore_snapshot(backup)
@@ -426,6 +443,7 @@ def install(channel, expected_tag, allow_child_signout=False):
                 print('AUTOMATIC RECOVERY FAILED: ' + str(recovery), file=sys.stderr)
                 print('Private backup available at: ' + str(backup), file=sys.stderr)
             raise
+    report_progress('complete')
     print('SUCCESS: updated ParentPilot to ' + release['version'] +
           '; child account, PIN, timer data and saved pictures retained.', flush=True)
     if signed_out:
