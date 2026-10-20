@@ -1,0 +1,99 @@
+name: Publish ParentPilot Linux Preview 19
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview19.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39410460491
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = d1b3c8cd95e04e659b976cfb97f4da35d714304c
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39410460491 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview19 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview19_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview19'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview19_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 19 — professional live update progress
+
+          Preview 19 improves the ParentPilot Updates desktop window so adults can see what happens throughout an approved software update.
+
+          - A cleaner, branded, responsive dark design that fits older Dell/Linux Mint XFCE laptops.
+          - Visible pulsing progress indicator while the updater is running; a completed bar appears **only** after success.
+          - Real progress milestones from the actual installer: confirming release, downloading and verifying, private backup, approved child sign-out if necessary, APT installation, deploying program files, and service health checks.
+          - Clearer separate **What's new** and **Update activity** tabs. Technical messages arrive live instead of all appearing at the end.
+          - Shows the administrator-password approval stage and blocks repeated installation clicks while updating.
+          - Makes failure and safe-recovery steps visible instead of leaving an apparently frozen window.
+          - Shows the new installed version and sign-in instructions on success.
+          - Keeps strict PolicyKit approval, signed-off GitHub release metadata and SHA-256 verification, child-only sign-out, backups, rollback attempts, service checks and existing family settings intact.
+          - Keeps all Preview 18 features including optional Kodi Media Centre, games, VLC, and Mint Whisker menu improvements.
+
+          **How to install:** Sign into the adult administrator account, open **ParentPilot Updates**, select **preview**, click **Check for updates**, and choose Preview 19. Save the child's open work before approving installation and sign-out.
+
+          **Testing:** GitHub Actions verified the DEB and passed Python, backend stage-message, 1024x600 / 800x480 GUI, lock stability, timer and parent API regression checks. Actual PolicyKit password dialogs, user sign-out and laptop display should still be confirmed on the Dell itself after installation.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview19 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview19 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 19 - professional live update progress"
+          else
+            gh release create v0.5.0-preview19 \
+              publish/parentpilot_0.5.0.preview19_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target d1b3c8cd95e04e659b976cfb97f4da35d714304c \
+              --title "ParentPilot Linux Preview 19 - professional live update progress" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview19 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
