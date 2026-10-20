@@ -31,7 +31,7 @@ app = games_gui.GamesGUI()
 root = app.root
 try:
     root.update_idletasks()
-    assert len(app.checks) == 8
+    assert len(app.checks) == 15
     assert list(app.media_checks) == ['kodi']
     assert not app.media_checks['kodi'].get()
     assert not any(v.get() for v in app.checks.values()), 'No surprise installs'
@@ -70,7 +70,7 @@ try:
     # Optional details appear when errors occur. All controls still fit.
     assert app.detail.winfo_ismapped()
     print('PASS: visible progress, live per-app milestones, failure recovery')
-    print('PASS: 8 optional checkboxes, footer visible at ' +
+    print('PASS: 15 optional checkboxes, footer visible at ' +
           f'{root.winfo_screenwidth()}x{root.winfo_screenheight()}')
 finally:
     root.destroy()
