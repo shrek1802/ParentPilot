@@ -17,7 +17,7 @@ from games_catalog import GAMES
 
 ROOT = Path('/usr/lib/parentpilot')
 MARKER = Path('/etc/max-family-control/config.json')
-BG = '#0f172a'; CARD = '#1e293b'; INSET = '#111d31'
+BG = '#0f172a'; CARD = '#1e293b'; PANEL = CARD; INSET = '#111d31'
 TEXT = '#f8fafc'; SUB = '#cbd5e1'; MUTED = '#94a3b8'
 BLUE = '#38bdf8'; TEAL = '#34d399'; RED = '#fca5a5'
 STEP_TITLES = ('Welcome', 'Child account', 'Family controls', 'Review')
