@@ -3,7 +3,7 @@
 
 Package IDs refer to Ubuntu/Debian APT packages, NEVER external downloads.
 Installer input is game IDs, never shell commands or user-provided package names.
-The catalogue is deliberately small and older Intel graphics friendly.
+The catalogue favours older hardware, with optional marked 3D games.
 """
 
 GAMES = (
@@ -15,6 +15,16 @@ GAMES = (
     ('supertux', 'SuperTux', 'Just for fun', 'Lightweight 2D platform adventures', 'supertux'),
     ('frozenbubble', 'Frozen Bubble', 'Just for fun', 'Colour-matching and aiming puzzle game', 'frozen-bubble'),
     ('sudoku', 'Sudoku', 'Puzzles', 'Number-placement logic puzzles', 'gnome-sudoku'),
+    # Optional expansion: packages verified in Ubuntu 24.04 official APT
+    # repositories. The old Intel GPU may struggle with 3D games, hence
+    # the performance labels. Never install unless an adult ticks them.
+    ('kgeography', 'KGeography', 'Learning', 'Maps, countries, capitals and flags (KDE educational libraries)', 'kgeography'),
+    ('blinken', 'Blinken', 'Puzzles', 'Memory and pattern game, like Simon Says (KDE libraries)', 'blinken'),
+    ('ktuberling', 'KTuberling', 'Creative', 'Build pictures from colourful shapes and objects (KDE libraries)', 'ktuberling'),
+    ('supertuxkart', 'SuperTuxKart', 'Just for fun', '3D kart racing; larger download and slower on older Intel graphics', 'supertuxkart'),
+    ('extremetuxracer', 'Extreme Tux Racer', 'Just for fun', 'Slide down snowy slopes in 3D; reduce graphics on older laptops', 'extremetuxracer'),
+    ('minetest', 'Minetest / Luanti (legacy package)', 'Creative', 'Offline block building; older Ubuntu release, try low graphics and local worlds', 'minetest'),
+    ('hedgewars', 'Hedgewars', 'Just for fun', 'Turn-based Worms-style strategy; fairly large game download', 'hedgewars'),
 )
 
 BY_ID = {game[0]: game for game in GAMES}
