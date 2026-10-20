@@ -198,4 +198,17 @@ with tempfile.TemporaryDirectory() as scratch:
         upd.pwd.getpwnam = saved_pw_lookup
 print('PASS: fresh-install marker, private PIN/token/screen backups, deployed copy and recovery')
 
+# Machine-readable progress events are emitted immediately, never by
+# guessing a completion percentage or changing protected settings.
+import contextlib
+import io
+buffer = io.StringIO()
+with contextlib.redirect_stdout(buffer):
+    upd.report_progress('verify')
+    upd.report_progress('backup')
+assert buffer.getvalue().splitlines() == [
+    'PARENTPILOT_PROGRESS:verify',
+    'PARENTPILOT_PROGRESS:backup',
+]
+
 print('PASS: ParentPilot update system security regression tests')
