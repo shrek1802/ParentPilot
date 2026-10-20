@@ -79,10 +79,6 @@ class SecurityPane:
         self.field(pin_page,'Current parent PIN',self.current)
         self.field(pin_page,'New six-digit PIN',self.pin)
         self.field(pin_page,'Confirm new PIN',self.pin_again)
-        self.pin_button=tk.Button(pin_page,text='Change parent PIN',
-                   command=self.change_pin,bg=ACCENT,fg=BG,relief='flat',
-                   font=('Sans',10,'bold'),padx=12,pady=7)
-        self.pin_button.pack(anchor='w',pady=(9,3))
         tk.Label(pin_page,text='Your time limits remain the same. The parent phone app will need the new PIN.',
                  bg=PANEL,fg=MUTED,font=('Sans',9),
                  wraplength=580,justify='left').pack(anchor='w')
@@ -91,21 +87,33 @@ class SecurityPane:
                  bg=PANEL,fg=TEXT,font=('Sans',11,'bold')).pack(anchor='w',pady=(0,7))
         self.field(pw_page,'New login password (8+ characters)',self.child_password)
         self.field(pw_page,'Confirm login password',self.child_again)
-        self.pw_button=tk.Button(pw_page,text='Change child password',
-                   command=self.change_password,bg=ACCENT,fg=BG,relief='flat',
-                   font=('Sans',10,'bold'),padx=12,pady=7)
-        self.pw_button.pack(anchor='w',pady=(9,3))
         tk.Label(pw_page,text='Changes the already-existing child account only. It takes effect at their next sign-in; no accounts are recreated.',
                  bg=PANEL,fg=MUTED,font=('Sans',9),
                  wraplength=580,justify='left').pack(anchor='w')
 
-        bottom=tk.Frame(self.frame,bg=INSET,padx=9,pady=7)
-        bottom.pack(side='bottom',fill='x',pady=(6,0))
-        self.message=tk.StringVar(value='No changes made. Select an action above.')
+        bottom=tk.Frame(self.frame,bg=INSET,padx=9,pady=6)
+        bottom.pack(side='bottom',fill='x',pady=(5,0))
+        self.action_button=tk.Button(
+            bottom,text='Change parent PIN',command=self.active_action,
+            bg=ACCENT,fg=BG,relief='flat',font=('Sans',10,'bold'),padx=12,pady=6)
+        self.action_button.pack(side='right',padx=(8,0))
+        self.message=tk.StringVar(value='No changes made.')
         tk.Label(bottom,textvariable=self.message,bg=INSET,fg=SUB,
-                 anchor='w',justify='left',wraplength=660,
-                 font=('Sans',9)).pack(fill='x')
+                 anchor='w',justify='left',wraplength=365,
+                 font=('Sans',9)).pack(side='left',fill='x',expand=True)
+        self.tabs.bind('<<NotebookTabChanged>>',self.sync_action)
         self.frame.after(150,self.poll)
+
+    def sync_action(self,_event=None):
+        self.action_button.configure(
+            text='Change parent PIN' if self.tabs.index('current')==0
+            else 'Change child password')
+
+    def active_action(self):
+        if self.tabs.index('current')==0:
+            self.change_pin()
+        else:
+            self.change_password()
 
     def field(self,parent,title,var):
         tk.Label(parent,text=title,bg=PANEL,fg=SUB,
@@ -161,8 +169,7 @@ class SecurityPane:
         self.message.set('Waiting for Linux administrator approval…')
         for entry in self.all_entries:
             entry.configure(state='disabled')
-        self.pin_button.configure(state='disabled')
-        self.pw_button.configure(state='disabled')
+        self.action_button.configure(state='disabled')
         # Clear all Tk password fields promptly; only the worker thread keeps
         # the one-use request to deliver through stdin to the root helper.
         for value in (self.current,self.pin,self.pin_again,
@@ -186,8 +193,7 @@ class SecurityPane:
                 self.busy=False
                 for entry in self.all_entries:
                     entry.configure(state='normal')
-                self.pin_button.configure(state='normal')
-                self.pw_button.configure(state='normal')
+                self.action_button.configure(state='normal')
                 if code==0 and out.startswith('SECURITY_RESULT:'):
                     self.message.set(out.split('SECURITY_RESULT:',1)[1].strip()[:220])
                 else:

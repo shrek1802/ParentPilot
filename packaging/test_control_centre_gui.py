@@ -23,17 +23,22 @@ try:
     for page in app.tabs.tabs():
         app.tabs.select(page)
         root.update_idletasks()
-    assert app.security.pin_button.winfo_exists()
-    assert app.security.pw_button.winfo_exists()
+    assert app.security.action_button.winfo_exists()
     assert app.games.install_btn.winfo_exists()
     assert app.updates.install_button.winfo_exists()
     app.security.tabs.select(0)
     app.tabs.select(3)
     root.update_idletasks()
-    assert app.security.pin_button.winfo_ismapped(), 'PIN action hidden'
+    assert app.security.action_button.winfo_ismapped(), 'Security action hidden'
+    assert app.security.action_button.cget('text') == 'Change parent PIN'
     app.security.tabs.select(1)
+    app.security.sync_action()
     root.update_idletasks()
-    assert app.security.pw_button.winfo_ismapped(), 'Child password action hidden'
+    assert app.security.action_button.winfo_ismapped(), 'Child password action hidden'
+    assert app.security.action_button.cget('text') == 'Change child password'
+    assert (app.security.action_button.winfo_rooty() +
+            app.security.action_button.winfo_height() <=
+            root.winfo_rooty()+root.winfo_height()), 'Security button clipped'
     # Simulate a running operation without performing privileged work.
     app.games.running=True
     with patch.object(pp.messagebox,'showwarning') as warned:
