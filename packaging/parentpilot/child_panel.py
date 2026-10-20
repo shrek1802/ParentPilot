@@ -219,7 +219,6 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     # Use the Linux Mint logo from the Mint icon theme where installed.
     prop(app_menu,'button-icon','string','distributor-logo')
     prop(app_menu,'show-button-icon','bool','true')
-    prop(app_menu,'show-button-title','bool','false')
     labels={10:'parentpilot-browser.desktop',11:'thunar.desktop',12:'parentpilot-youtube.desktop',13:'parentpilot-netflix.desktop',14:'parentpilot-vlc.desktop'}
     tasklist=prop(plugins,'plugin-17','string','tasklist')
     prop(tasklist,'grouping','uint',1)
