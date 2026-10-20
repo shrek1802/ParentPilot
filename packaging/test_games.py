@@ -163,7 +163,7 @@ assert 'for game_id, title, category, description, package in GAMES' in wizard_t
 assert "data['games']" in wizard_text
 assert "'--from-manager'" in manager_text
 assert 'from games_catalog import GAMES' in manager_text
-assert 'MEDIA PLAYERS' in manager_text
+assert 'MEDIA_PLAYERS' in manager_text
 assert "'kodi':tk.BooleanVar(value=False)" in wizard_text
 assert "'media': media_ids" in manager_text
 
