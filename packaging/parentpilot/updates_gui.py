@@ -80,15 +80,20 @@ def fit_update_window(screen_width, screen_height):
 
 
 class UpdatesGUI:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title('ParentPilot | Updates')
+    def __init__(self, parent=None):
+        self.embedded = parent is not None
+        self.root = tk.Frame(parent, bg=BG) if self.embedded else tk.Tk()
+        if self.embedded:
+            self.root.pack(fill='both', expand=True)
+        else:
+            self.root.title('ParentPilot | Updates')
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         width, height = fit_update_window(sw, sh)
-        self.root.geometry(f'{width}x{height}+{max(0, (sw - width)//2)}+{max(0, (sh - height)//2)}')
-        self.root.minsize(min(430, width), min(350, height))
+        if not self.embedded:
+            self.root.geometry(f'{width}x{height}+{max(0, (sw - width)//2)}+{max(0, (sh - height)//2)}')
+            self.root.minsize(min(430, width), min(350, height))
+            self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.root.configure(background=BG)
-        self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.events = queue.Queue()
         self.release = None
         self.busy = False

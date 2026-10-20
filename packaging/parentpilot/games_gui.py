@@ -48,15 +48,20 @@ def window_size(sw, sh):
 
 
 class GamesGUI:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title('ParentPilot — Games & Learning')
+    def __init__(self, parent=None):
+        self.embedded = parent is not None
+        self.root = tk.Frame(parent, bg=BG) if self.embedded else tk.Tk()
+        if self.embedded:
+            self.root.pack(fill='both', expand=True)
+        else:
+            self.root.title('ParentPilot — Games & Learning')
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         width, height = window_size(sw, sh)
-        self.root.geometry(f'{width}x{height}+{max(0, (sw-width)//2)}+{max(0, (sh-height)//2)}')
-        self.root.minsize(min(width, 380), min(height, 330))
+        if not self.embedded:
+            self.root.geometry(f'{width}x{height}+{max(0, (sw-width)//2)}+{max(0, (sh-height)//2)}')
+            self.root.minsize(min(width, 380), min(height, 330))
+            self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.root.configure(bg=BG)
-        self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.events = queue.Queue()
         self.running = False
         self.total = 0

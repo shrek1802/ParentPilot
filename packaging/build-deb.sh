@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview23
+VERSION=0.5.0~preview24
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -40,7 +40,7 @@ cat > "$STAGING/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml" <<'E
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>uk.parentpilot.ParentPilot</id>
-  <name>ParentPilot Family Setup</name>
+  <name>ParentPilot Control Centre</name>
   <summary>Friendly family screen-time setup for XFCE/X11 Linux laptops</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
@@ -49,7 +49,7 @@ cat > "$STAGING/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml" <<'E
     shortcuts with a guided parent wizard. Fresh Debian-family XFCE/X11
     installations only. Existing accounts and screen-time settings are preserved.</p>
   </description>
-  <launchable type="desktop-id">parentpilot-setup.desktop</launchable>
+  <launchable type="desktop-id">parentpilot-control-centre.desktop</launchable>
   <url type="homepage">https://github.com/shrek1802/ParentPilot</url>
 </component>
 EOF
@@ -71,37 +71,37 @@ cat > "$STAGING/usr/bin/parentpilot-games" <<'EOF'
 exec /usr/bin/python3 /usr/lib/parentpilot/games_gui.py "$@"
 EOF
 chmod 0755 "$STAGING/usr/bin/parentpilot-games"
-cat > "$STAGING/usr/share/applications/parentpilot-games.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=ParentPilot Games & Learning
-Comment=Choose free games for the family laptop
-Exec=parentpilot-games
-Icon=parentpilot
-Categories=Settings;Education;
-Terminal=false
-StartupNotify=true
-EOF
+# Old games command remains a compatible wrapper, but the separate menu
+# launcher is gone. Its embedded page now lives inside Control Centre.
 # Parent-only updater: read-only version checks, privileged verified DEB upgrades.
 install -m 0644 "$ROOT/packaging/parentpilot/update_release.py" "$STAGING/usr/lib/parentpilot/update_release.py"
 install -m 0644 "$ROOT/packaging/parentpilot/updates_gui.py" "$STAGING/usr/lib/parentpilot/updates_gui.py"
 install -m 0755 "$ROOT/packaging/parentpilot/update_install.py" "$STAGING/usr/lib/parentpilot/update_install.py"
-cat > "$STAGING/usr/bin/parentpilot-updates" <<'EOF'
+install -m 0755 "$ROOT/packaging/parentpilot/account_settings.py" "$STAGING/usr/lib/parentpilot/account_settings.py"
+install -m 0644 "$ROOT/packaging/parentpilot/control_centre.py" "$STAGING/usr/lib/parentpilot/control_centre.py"
+cat > "$STAGING/usr/bin/parentpilot-control-centre" <<'EOF'
 #!/bin/sh
-exec /usr/bin/python3 /usr/lib/parentpilot/updates_gui.py "$@"
+exec /usr/bin/python3 /usr/lib/parentpilot/control_centre.py "$@"
 EOF
-chmod 0755 "$STAGING/usr/bin/parentpilot-updates"
-cat > "$STAGING/usr/share/applications/parentpilot-updates.desktop" <<'EOF'
+chmod 0755 "$STAGING/usr/bin/parentpilot-control-centre"
+cat > "$STAGING/usr/share/applications/parentpilot-control-centre.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=ParentPilot Updates
-Comment=Check for ParentPilot updates and review what has changed
-Exec=parentpilot-updates
+Name=ParentPilot Control Centre
+Comment=Family laptop updates, games, media, PIN and child login password
+Exec=parentpilot-control-centre
 Icon=parentpilot
 Categories=Settings;System;
 Terminal=false
 StartupNotify=true
 EOF
+cat > "$STAGING/usr/bin/parentpilot-updates" <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/parentpilot/updates_gui.py "$@"
+EOF
+chmod 0755 "$STAGING/usr/bin/parentpilot-updates"
+# The update command remains for desktop notifications and older shortcuts.
+# Normal adult access is via the Control Centre's Updates tab.
 cat > "$STAGING/etc/xdg/autostart/parentpilot-update-check.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application

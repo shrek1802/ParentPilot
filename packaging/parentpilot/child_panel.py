@@ -360,19 +360,24 @@ def existing_parentpilot_panel(home):
 
 
 def repair_child_panel():
-    """Update the child-owned dock layout only after parent approved DEB upgrade."""
+    """Maintain only our own shortcuts; never rebuild a customised panel.
+
+    The previous upgrade path called write_child_panel, which replaced the
+    entire XFCE plugin list and removed user-pinned Kodi/game launchers.
+    Preserve both the offline XML and the live xfconf plugin order verbatim.
+    """
     if os.geteuid() == 0:
         raise RuntimeError('Child panel repair must not run as root.')
-    user = pwd.getpwuid(os.getuid())
-    home = Path(user.pw_dir)
+    account = pwd.getpwuid(os.getuid())
+    home = Path(account.pw_dir)
     if not existing_parentpilot_panel(home):
-        print('SKIPPED: existing panel is not recognisably ParentPilot-managed.')
+        print('SKIPPED: child panel is not ParentPilot-managed.')
         return
-    app_dir = home / '.local/share/applications'
-    youtube = (app_dir / 'parentpilot-youtube.desktop').is_file()
-    netflix = (app_dir / 'parentpilot-netflix.desktop').is_file()
-    write_child_panel(home, user.pw_gid, youtube=youtube, netflix=netflix)
-    print('Child ParentPilot panel updated; existing account settings preserved.')
+    restore_normal_apps_and_hide_other_browsers(home)
+    ensure_mint_whisker_settings(home)
+    make_vlc_child_shortcut(home)
+    print('Child menu checked; pinned launchers and XFCE panel preserved.')
+
 
 
 # XFCE saves its panel in xfconf, not just xfce4-panel.xml. A resident xfconfd
@@ -383,125 +388,29 @@ LAYOUT_REVISION = 'mint-whisker-power-indicator-v8'
 
 
 def xfconf_commands_for_panel(home):
-    """Pure commands for the known ParentPilot panel; never touch other users."""
-    home = Path(home)
-    if not existing_parentpilot_panel(home):
-        return []
-    xml_file = home / '.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml'
-    root = ET.parse(xml_file).getroot()
-    values = root.findall(".//property[@name='panel-1']/property[@name='plugin-ids']/value")
-    plugin_ids = [int(v.get('value')) for v in values]
-    # The only supported template: menu, equal expanding left/right spacers,
-    # curated app launchers, notification tray, and clock. Never mutate a
-    # generic XFCE panel or make guesses about plugin identifiers.
-    # Only the exact known ParentPilot tray -> battery -> clock order is
-    # accepted; unmanaged or user-customised panels are left alone.
-    if (len(plugin_ids) < 9 or plugin_ids[:3] != [1, 17, 18] or
-            19 not in plugin_ids or plugin_ids[-3:] != [21, 23, 22]):
-        return []
-    if plugin_ids.index(19) <= 2:
-        return []
-    query = 'xfconf-query'
-    commands = [
-        # Replace the incorrect basic XFCE Applications menu with Mint's
-        # installed Whisker plugin, including its full searchable app list.
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1',
-         '-n', '-t', 'string', '-s', 'whiskermenu'],
-        [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/size',
-         '-n', '-t', 'uint', '-s', '44'],
-        [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/icon-size',
-         '-n', '-t', 'uint', '-s', '32'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-17',
-         '-n', '-t', 'string', '-s', 'tasklist'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-14',
-         '-n', '-t', 'string', '-s', 'launcher'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-14/items',
-         '-n', '-a', '-t', 'string', '-s', 'parentpilot-vlc.desktop'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/custom-menu',
-         '-n', '-t', 'bool', '-s', 'false'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-21/icon-size',
-         '-n', '-t', 'int', '-s', '20'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-21/single-row',
-         '-n', '-t', 'bool', '-s', 'true'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-23',
-         '-n', '-t', 'string', '-s', 'power-manager-plugin'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-22/mode',
-         '-n', '-t', 'uint', '-s', '2'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-22/digital-format',
-         '-n', '-t', 'string', '-s', '%H:%M'],
-    ]
-    for plugin_id in (18, 19):
-        commands.extend([
-            [query, '-c', 'xfce4-panel', '-p', f'/plugins/plugin-{plugin_id}',
-             '-n', '-t', 'string', '-s', 'separator'],
-            [query, '-c', 'xfce4-panel', '-p', f'/plugins/plugin-{plugin_id}/style',
-             '-n', '-t', 'uint', '-s', '0'],
-            [query, '-c', 'xfce4-panel', '-p', f'/plugins/plugin-{plugin_id}/expand',
-             '-n', '-t', 'bool', '-s', 'true'],
-        ])
-    # Reassert the plugin order after xfconf has recognised the separators.
-    args = [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/plugin-ids',
-            '-n', '-a']
-    for plugin_id in plugin_ids:
-        args.extend(['-t', 'int', '-s', str(plugin_id)])
-    commands.append(args)
-    return commands
+    """Never reapply a fixed plugin list over custom pins.
+
+    Modern ParentPilot does not need to change the panel on upgrades. The
+    fresh setup writes its XML once and XFCE owns it thereafter. In particular
+    do not call xfconf-query on /panels/panel-1/plugin-ids, or overwrite a
+    launcher that a family has pinned (for example Kodi).
+    """
+    return []
+
 
 
 def apply_session_panel(home=None, runner=subprocess.run):
-    """Repair the live XFCE panel once per layout revision and child profile.
+    """Legacy child autostart is now a no-op to preserve a customised panel.
 
-    Called only by the managed CHILD session autostart, using that session's
-    DBus and xfconf. Never run as root, never restart the window manager, and
-    never overwrite administrator panels. A failing command does not leave
-    a success marker: the next login can retry.
+    No xfconf writes or panel restarts; existing Kodi/taskbar pins are safe.
     """
     if os.geteuid() == 0:
         raise RuntimeError('Refusing to manage a root XFCE panel.')
-    user = pwd.getpwuid(os.getuid())
-    user_home = Path(home or user.pw_dir)
-    commands = xfconf_commands_for_panel(user_home)
-    if not commands:
-        print('SKIPPED: not a ParentPilot-managed child panel.')
+    account = pwd.getpwuid(os.getuid())
+    if not existing_parentpilot_panel(Path(home or account.pw_dir)):
+        print('SKIPPED: this is not a managed child panel.')
         return False
-    state = user_home / '.local/state/parentpilot'
-    marker = state / ('panel-' + LAYOUT_REVISION + '.done')
-    if marker.exists():
-        return True
-    if not shutil.which('xfconf-query'):
-        print('DEFERRED: xfconf-query not available yet.')
-        return False
-    # A real graphical session is required; avoid accidentally writing to a
-    # separate DBus service or another logged-in user's panel.
-    if not os.environ.get('DISPLAY') or not os.environ.get('DBUS_SESSION_BUS_ADDRESS'):
-        print('DEFERRED: XFCE session display or DBus is not ready.')
-        return False
-    for argv in commands:
-        result = runner(argv, capture_output=True, text=True, timeout=8, check=False)
-        if result.returncode != 0:
-            print('DEFERRED: XFCE rejected a panel setting. Will retry at next login.')
-            return False
-    # A one-time panel restart at login reloads freshly written .desktop
-    # icons. Avoid restarting the compositor/window manager or lock service.
-    # Never loop the restart: write the marker BEFORE requesting it.
-    state.mkdir(parents=True, exist_ok=True, mode=0o700)
-    marker.write_text(LAYOUT_REVISION + '\n', encoding='ascii')
-    marker.chmod(0o600)
-    # Changing the plugin type on an already running XFCE panel requires a
-    # one-time panel reload. This only restarts the child's XFCE panel, not
-    # the window manager, ParentPilot timer, or other users' desktops.
-    try:
-        result = runner(['xfce4-panel', '--restart'], capture_output=True,
-                        text=True, timeout=12, check=False)
-        if result.returncode != 0:
-            marker.unlink(missing_ok=True)
-            print('DEFERRED: XFCE panel restart failed; retrying next login.')
-            return False
-    except (OSError, subprocess.TimeoutExpired):
-        marker.unlink(missing_ok=True)
-        print('DEFERRED: XFCE panel restart unavailable; retrying next login.')
-        return False
-    print('ParentPilot refreshed Mint Whisker menu and battery indicator on the child panel.')
+    print('ParentPilot leaves pinned XFCE panel apps unchanged.')
     return True
 
 

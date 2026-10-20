@@ -163,70 +163,49 @@ with tempfile.TemporaryDirectory() as d:
     for key in ('plugin-18','plugin-19'):
         spacer=x.find(f".//property[@name='{key}']/property[@name='expand']")
         assert spacer is not None and spacer.attrib['value'] == 'true'
-    # Detect our original panel and repair its layout without provisioning users.
+    # Upgrade must leave a family's extra pinned Kodi launcher exactly where
+    # they put it, including its plugin ID and custom launcher file.
     from parentpilot import child_panel as cp
     assert cp.existing_parentpilot_panel(home)
-    old_panel=home/'.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml'
-    old_xml=old_panel.read_text()
-    assert 'plugin-19' in old_xml
+    panel_path=home/'.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml'
+    original=ET.parse(panel_path)
+    saved_root=original.getroot()
+    plugin_list=saved_root.find(".//property[@name='panel-1']/property[@name='plugin-ids']")
+    items=plugin_list.findall('value')
+    # Insert extra user-created launcher before the existing right separator.
+    insertion=next(j for j,p in enumerate(items) if p.get('value') == '19')
+    plugin_list.insert(insertion, ET.Element('value',{'type':'int','value':'50'}))
+    plugins_node=saved_root.find(".//property[@name='plugins']")
+    custom=ET.SubElement(plugins_node,'property',{'name':'plugin-50','type':'string','value':'launcher'})
+    ET.SubElement(custom,'property',{'name':'items','type':'array'})
+    pinned=home/'.config/xfce4/panel/launcher-50'
+    pinned.mkdir(parents=True)
+    (pinned/'kodi.desktop').write_text('[Desktop Entry]\nType=Application\nName=Kodi\nExec=kodi\n')
+    original.write(panel_path,encoding='utf-8',xml_declaration=True)
+    before=panel_path.read_bytes()
     from unittest.mock import patch
     from types import SimpleNamespace
     with patch.object(cp.os, 'geteuid', return_value=1000), \
          patch.object(cp.os, 'getuid', return_value=1000), \
          patch.object(cp.pwd, 'getpwuid', return_value=SimpleNamespace(pw_dir=str(home),pw_gid=1000)):
         cp.repair_child_panel()
-    assert old_panel.is_file()
-    assert cp.existing_parentpilot_panel(home)
-    # Actual launcher entries must have REAL newline characters, not literal
-    # backslash-n sequences; otherwise XFCE shows generic/corrupt icons.
+        assert cp.apply_session_panel(home=home, runner=lambda *a,**k: (
+            (_ for _ in ()).throw(AssertionError('XFCE must not be restarted'))))
+    assert panel_path.read_bytes() == before, 'The updater overwrote a pinned Kodi launcher'
+    assert (pinned/'kodi.desktop').is_file()
+    assert cp.xfconf_commands_for_panel(home) == [], 'Upgrade must not rewrite XFCE plugin IDs'
     for item in ['launcher-10/parentpilot-browser.desktop',
                  'launcher-11/thunar.desktop',
                  'launcher-12/parentpilot-youtube.desktop',
                  'launcher-13/parentpilot-netflix.desktop',
                  'launcher-14/parentpilot-vlc.desktop']:
-        data = (home/'.config/xfce4/panel'/item).read_text()
-        assert data.startswith('[Desktop Entry]\n'), (item, repr(data[:80]))
-        assert '\nIcon=' in data, (item, repr(data))
-        assert r'\n' not in data, (item, repr(data))
-    thunar = (home/'.config/xfce4/panel/launcher-11/thunar.desktop').read_text()
-    assert 'Exec=thunar\n' in thunar
-    assert 'files.svg' in thunar
-    browser = (home/'.local/share/applications/parentpilot-browser.desktop').read_text()
-    assert 'Exec=true' in browser and 'browser.svg' in browser
+        data=(home/'.config/xfce4/panel'/item).read_text()
+        assert data.startswith('[Desktop Entry]\n'),item
+        assert '\nIcon=' in data,item
     assert (home/'.config/autostart/parentpilot-panel-refresh.desktop').is_file()
-
-    # Live corrections happen only in the child's own XFCE session, through
-    # xfconf. They must not affect adult/user-modified panels.
-    commands=cp.xfconf_commands_for_panel(home)
-    assert len(commands) >= 8
-    assert any('/panels/panel-1/plugin-ids' in c for c in commands)
-    assert any('/plugins/plugin-1' == c[4] and c[-1] == 'whiskermenu' for c in commands)
-    assert any('/plugins/plugin-17' in c and 'tasklist' in c for c in commands)
-    assert any('/plugins/plugin-14/items' in c for c in commands)
-    assert any('/plugins/plugin-21/icon-size' in c and c[-1] == '20' for c in commands)
-    assert any('/plugins/plugin-22/digital-format' in c and c[-1] == '%H:%M' for c in commands)
-    assert any('/plugins/plugin-23' == c[4] and c[-1] == 'power-manager-plugin'
-               for c in commands), 'Child session must load native XFCE battery plugin'
-    assert cp.LAYOUT_REVISION == 'mint-whisker-power-indicator-v8'
-    assert all(c[0] == 'xfconf-query' and c[2] == 'xfce4-panel' for c in commands)
-    with patch.object(cp.os, 'geteuid', return_value=1000), \
-         patch.object(cp.os, 'getuid', return_value=1000), \
-         patch.object(cp.pwd, 'getpwuid', return_value=SimpleNamespace(pw_dir=str(home), pw_gid=1000)), \
-         patch.object(cp.shutil, 'which', return_value='/usr/bin/xfconf-query'), \
-         patch.dict(cp.os.environ, {'DISPLAY':':10',
-                                   'DBUS_SESSION_BUS_ADDRESS':'unix:path=/tmp/test-bus'}):
-        calls=[]
-        def run_fake(cmd, **kwargs):
-            calls.append(cmd)
-            return SimpleNamespace(returncode=0)
-        assert cp.apply_session_panel(home=home, runner=run_fake)
-        assert len(calls) == len(commands) + 1
-        assert calls[-1] == ['xfce4-panel', '--restart'], 'Whisker plugin must be reloaded once'
-        assert cp.apply_session_panel(home=home, runner=run_fake)
-        assert len(calls) == len(commands) + 1, 'Already-applied layouts must not flap at login'
-
     with tempfile.TemporaryDirectory() as unrelated:
         assert cp.xfconf_commands_for_panel(pathlib.Path(unrelated)) == []
+
 
 import py_compile
 for py in [R/'parentpilot/wizard.py',R/'parentpilot/preflight.py',R/'parentpilot/setup_root.py',R.parent/'desktop/max_desktop.py',R.parent/'desktop/parentpilot_lock_media.py',R.parent/'desktop/screen_view.py']:
