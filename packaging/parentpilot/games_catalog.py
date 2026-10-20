@@ -39,3 +39,24 @@ def validate_game_ids(value):
 
 def package_names(game_ids):
     return tuple(BY_ID[key][4] for key in validate_game_ids(list(game_ids)))
+
+
+# Optional Linux desktop media players, kept separate from educational games.
+# No third-party repository, Kodi add-on or streaming plugin is installed.
+MEDIA_PLAYERS = (
+    ('kodi', 'Kodi Media Centre', 'Media Players',
+     'Play local films, cartoons and music; best suited to SD and 720p on older PCs', 'kodi'),
+)
+BY_MEDIA_ID = {player[0]: player for player in MEDIA_PLAYERS}
+assert len(BY_MEDIA_ID) == len(MEDIA_PLAYERS)
+
+
+def validate_media_ids(value):
+    """Allow only named desktop APT media packages; default OFF."""
+    if not isinstance(value, list) or len(value) > len(MEDIA_PLAYERS):
+        raise ValueError('Invalid media player selection.')
+    if any(type(media_id) is not str or media_id not in BY_MEDIA_ID for media_id in value):
+        raise ValueError('Selected media player is not approved by ParentPilot.')
+    if len(set(value)) != len(value):
+        raise ValueError('Duplicate media player selected.')
+    return tuple(value)
