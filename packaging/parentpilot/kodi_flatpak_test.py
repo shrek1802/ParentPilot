@@ -59,12 +59,35 @@ def flathub_origin(available_remotes):
 
 
 def parse_installed_version(info):
-    """The portable 'flatpak info' output can include a human Version field.
+    """Get the human-readable installed version without unsupported options.
 
-    '--show-version' is NOT a Flatpak info flag (including on Mint 22).
-    A missing/unknown version is not an installation failure.
+    The flatpak info command has --show-ref and --show-origin, but not
+    --show-version. Missing version text should not invalidate a good install.
     """
-    found = re.search(r'(?im)^\\s*Version:\\s*([0-9][0-9A-Za-z_.+-]{0,44})\\s*
+    found = re.search(r'(?im)^\s*Version:\s*([0-9][0-9A-Za-z_.+-]{0,44})\s*$',
+                      info or '')
+    return found.group(1) if found else 'version not reported'
+
+
+def installed_stable_kodi(runner=subprocess.run):
+    """Confirm system installation and origin, even after a prior false failure."""
+    result = runner([FLATPAK, 'info', '--system', '--show-ref', APP],
+                    capture_output=True, text=True, check=False, timeout=50)
+    if result.returncode != 0:
+        return None
+    ref = (result.stdout or '').strip()
+    if not re.fullmatch(r'app/tv\.kodi\.Kodi/[A-Za-z0-9_]+/stable', ref):
+        raise RuntimeError('Unexpected Kodi Flatpak ref; leaving existing apps unchanged.')
+    origin = run_checked([FLATPAK, 'info', '--system', '--show-origin', APP],
+                         timeout=50, runner=runner)
+    if origin != REMOTE:
+        raise RuntimeError('Existing Kodi Flatpak is not from the official Flathub remote.')
+    info = run_checked([FLATPAK, 'info', '--system', APP],
+                       timeout=50, runner=runner)
+    return parse_installed_version(info)
+
+
+def write_launcher(target=SHORTCUT):
     if target.is_symlink():
         raise RuntimeError('Refusing to replace a linked Kodi test shortcut.')
     if target.exists() and target.read_text(encoding='utf8') != DESKTOP_ENTRY:
