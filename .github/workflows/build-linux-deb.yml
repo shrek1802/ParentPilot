@@ -74,42 +74,42 @@ jobs:
         run: bash packaging/build-deb.sh "$GITHUB_WORKSPACE/dist"
       - name: Inspect package and protect maintainer scripts
         run: |
-          test -s dist/parentpilot_0.5.0~preview28_all.deb
-          dpkg-deb --info dist/parentpilot_0.5.0~preview28_all.deb
-          dpkg-deb --field dist/parentpilot_0.5.0~preview28_all.deb Depends | grep -F 'xfce4-whiskermenu-plugin'
-          dpkg-deb --field dist/parentpilot_0.5.0~preview28_all.deb Depends | grep -F 'xfce4-power-manager-plugins'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/child_panel.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/games_catalog.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/games_gui.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/games_install.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/kodi_flatpak_test.py'
-          ! dpkg-deb --field dist/parentpilot_0.5.0~preview28_all.deb Depends | grep -E '(^|, )flatpak(,|$)'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/icons/browser.svg'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/icons/files.svg'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/icons/youtube.svg'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/icons/netflix.svg'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/share/icons/hicolor/128x128/apps/parentpilot.png'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/desktop/screen_view.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/desktop/parentpilot_screen_parent.js'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/bin/parentpilot-updates'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/update_install.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/account_settings.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/control_centre.py'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/share/applications/parentpilot-control-centre.desktop'
-          ! dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/share/applications/parentpilot-games.desktop'
-          ! dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/share/applications/parentpilot-updates.desktop'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/lib/parentpilot/screen_settings.py'
-          ! dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
-          dpkg-deb --contents dist/parentpilot_0.5.0~preview28_all.deb | grep -F '/etc/xdg/autostart/parentpilot-update-check.desktop'
-          ! dpkg-deb --field dist/parentpilot_0.5.0~preview28_all.deb Depends | grep -E '(^|, )kodi(,|$)'
-          dpkg-deb --field dist/parentpilot_0.5.0~preview28_all.deb Depends | grep -F 'vlc'
+          test -s dist/parentpilot_0.5.0~preview29_all.deb
+          dpkg-deb --info dist/parentpilot_0.5.0~preview29_all.deb
+          dpkg-deb --field dist/parentpilot_0.5.0~preview29_all.deb Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb --field dist/parentpilot_0.5.0~preview29_all.deb Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/child_panel.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/games_catalog.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/games_gui.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/games_install.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/kodi_flatpak_test.py'
+          ! dpkg-deb --field dist/parentpilot_0.5.0~preview29_all.deb Depends | grep -E '(^|, )flatpak(,|$)'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/icons/browser.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/icons/files.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/icons/youtube.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/icons/netflix.svg'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/share/applications/parentpilot-setup.desktop'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/share/icons/hicolor/128x128/apps/parentpilot.png'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/desktop/screen_view.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/desktop/parentpilot_screen_parent.js'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/bin/parentpilot-updates'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/update_install.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/account_settings.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/control_centre.py'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/share/applications/parentpilot-control-centre.desktop'
+          ! dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/share/applications/parentpilot-games.desktop'
+          ! dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/share/applications/parentpilot-updates.desktop'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/lib/parentpilot/screen_settings.py'
+          ! dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
+          dpkg-deb --contents dist/parentpilot_0.5.0~preview29_all.deb | grep -F '/etc/xdg/autostart/parentpilot-update-check.desktop'
+          ! dpkg-deb --field dist/parentpilot_0.5.0~preview29_all.deb Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb --field dist/parentpilot_0.5.0~preview29_all.deb Depends | grep -F 'vlc'
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
-          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview28
+          name: ParentPilot-Debian-XFCE-DEB-v0.5.0-preview29
           path: dist/*.deb
           if-no-files-found: error
           retention-days: 30
