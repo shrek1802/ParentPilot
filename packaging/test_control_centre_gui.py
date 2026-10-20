@@ -7,7 +7,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parent/'parentpilot'))
 import control_centre as pp
 
 with patch.object(pp,'installed_version',return_value='0.5.0~preview24'),\
-     patch.object(pp.subprocess,'run',return_value=type('Done',(),{'returncode':0})()):
+     patch.object(pp.subprocess,'run',return_value=type('Done',(),{'returncode':0,'stdout':'0.5.0~preview24'})()):
     app=pp.Centre()
 root=app.root
 try:
