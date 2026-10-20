@@ -21,11 +21,20 @@ expected = {
     'supertux': 'supertux',
     'frozenbubble': 'frozen-bubble',
     'sudoku': 'gnome-sudoku',
+    'kgeography': 'kgeography',
+    'blinken': 'blinken',
+    'ktuberling': 'ktuberling',
+    'supertuxkart': 'supertuxkart',
+    'extremetuxracer': 'extremetuxracer',
+    'minetest': 'minetest',
+    'hedgewars': 'hedgewars',
 }
 assert dict((key, package) for key, _title, _category, _desc, package
             in catalog.GAMES) == expected
 assert catalog.validate_game_ids([]) == ()
 assert catalog.validate_game_ids(['tuxtype', 'supertux']) == ('tuxtype', 'supertux')
+assert len(catalog.GAMES) == 15
+assert catalog.validate_game_ids(['minetest','hedgewars']) == ('minetest','hedgewars')
 assert catalog.package_names(['tuxtype', 'supertux']) == ('tuxtype', 'supertux')
 assert catalog.MEDIA_PLAYERS[0][4] == 'kodi'
 assert catalog.validate_media_ids([]) == ()
@@ -167,5 +176,5 @@ assert 'MEDIA_PLAYERS' in manager_text
 assert "'kodi':tk.BooleanVar(value=False)" in wizard_text
 assert "'media': media_ids" in manager_text
 
-print('PASS: 8 educational/2D games + optional Kodi, only selected APT packages, setup validation, '
+print('PASS: 15 educational, 2D and optional 3D games + Kodi, only selected APT packages, setup validation, '
       'partial failure, no removals, and adult-only installation')
