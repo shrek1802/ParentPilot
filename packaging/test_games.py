@@ -27,6 +27,15 @@ assert dict((key, package) for key, _title, _category, _desc, package
 assert catalog.validate_game_ids([]) == ()
 assert catalog.validate_game_ids(['tuxtype', 'supertux']) == ('tuxtype', 'supertux')
 assert catalog.package_names(['tuxtype', 'supertux']) == ('tuxtype', 'supertux')
+assert catalog.MEDIA_PLAYERS[0][4] == 'kodi'
+assert catalog.validate_media_ids([]) == ()
+assert catalog.validate_media_ids(['kodi']) == ('kodi',)
+for invalid_media in ('kodi', None, True, ['kodi', 'kodi'], ['vlc'], ['--force-yes'], ['kodi;curl example.invalid']):
+    try:
+        catalog.validate_media_ids(invalid_media)
+        raise AssertionError('Accepted invalid media selection: ' + repr(invalid_media))
+    except ValueError:
+        pass
 for invalid in (
     'tuxmath', None, {'tuxmath': True}, ['not-a-package'],
     ['tuxmath', 'tuxmath'], ['supertux;rm -rf /'], ['--force-yes'],
@@ -49,6 +58,13 @@ form = {
 }
 assert setup.validate(form)[1] == 'kidtest' # Backward compatibility, no games field.
 assert setup.validate({**form, 'games': ['gcompris', 'supertux']})[1] == 'kidtest'
+assert setup.validate({**form, 'kodi': True})[1] == 'kidtest'
+for invalid_flag in ('true', 1, ['kodi'], None):
+    try:
+        setup.validate({**form, 'kodi': invalid_flag})
+        raise AssertionError('Accepted invalid Kodi flag')
+    except ValueError:
+        pass
 for invalid in (['invalid'], ['tuxpaint', 'tuxpaint'], False, 'supertux', None):
     try:
         setup.validate({**form, 'games': invalid})
@@ -71,7 +87,7 @@ def fake_runner(argv, **kwargs):
         assert argv[:4] == [
             '/usr/bin/apt-get', 'install', '-y', '--no-install-recommends',
         ]
-        assert argv[-1] in expected.values()
+        assert argv[-1] in (*expected.values(), 'kodi')
         assert kwargs.get('env', {}).get('DEBIAN_FRONTEND') == 'noninteractive'
         if argv[-1] == 'frozen-bubble':
             return SimpleNamespace(returncode=100, stderr='Package unavailable', stdout='')
@@ -90,6 +106,8 @@ assert [argv[-1] for argv in commands if argv[0] == '/usr/bin/apt-get'] == [
 ]
 assert all('remove' not in cmd and 'purge' not in cmd for cmd in commands)
 assert installer.install_selected([], runner=fake_runner) == ([], [], [])
+assert installer.install_selected_media(['kodi'], runner=fake_runner) == (['Kodi Media Centre'], [], [])
+assert [argv[-1] for argv in commands if argv[0] == '/usr/bin/apt-get'][-1] == 'kodi'
 
 # Root backend authorisation checks use the PolicyKit caller, never an
 # arbitrary request as coming from the child or a random shell.
@@ -128,6 +146,9 @@ assert 'for game_id, title, category, description, package in GAMES' in wizard_t
 assert "data['games'] = " in wizard_text
 assert "'--from-manager'" in manager_text
 assert 'from games_catalog import GAMES' in manager_text
+assert 'MEDIA PLAYERS' in manager_text
+assert "'kodi':tk.BooleanVar(value=False)" in wizard_text
+assert "'media': media_ids" in manager_text
 
-print('PASS: 8 educational/2D games, only selected APT packages, setup validation, '
+print('PASS: 8 educational/2D games + optional Kodi, only selected APT packages, setup validation, '
       'partial failure, no removals, and adult-only installation')
