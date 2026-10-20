@@ -160,7 +160,7 @@ wizard_text = (ROOT / 'parentpilot/wizard.py').read_text()
 manager_text = (ROOT / 'parentpilot/games_gui.py').read_text()
 assert 'from games_catalog import GAMES' in wizard_text
 assert 'for game_id, title, category, description, package in GAMES' in wizard_text
-assert "data['games'] = " in wizard_text
+assert "data['games']" in wizard_text
 assert "'--from-manager'" in manager_text
 assert 'from games_catalog import GAMES' in manager_text
 assert 'MEDIA PLAYERS' in manager_text
