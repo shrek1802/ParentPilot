@@ -42,6 +42,9 @@ jobs:
           xvfb-run -a -s '-screen 0 800x480x24' python3 packaging/test_updates_gui.py
           xvfb-run -a -s '-screen 0 1024x600x24' python3 packaging/test_games_gui.py
           xvfb-run -a -s '-screen 0 800x480x24' python3 packaging/test_games_gui.py
+      - name: Confirm official Ubuntu Kodi package is present (no third-party sources)
+        run: |
+          apt-cache show kodi | grep -F 'Package: kodi'
       - name: Test single supervisor per child session
         run: python3 desktop/test_supervisor_singleton.py
 
@@ -55,7 +58,7 @@ jobs:
         run: bash packaging/build-deb.sh "$GITHUB_WORKSPACE/dist"
       - name: Inspect package and protect maintainer scripts
         run: |
-          test -s dist/parentpilot_0.5.0~preview17_all.deb
+          test -s dist/parentpilot_0.5.0~preview18_all.deb
           dpkg-deb --info dist/parentpilot_0.5.0~preview17_all.deb
           dpkg-deb --field dist/parentpilot_0.5.0~preview17_all.deb Depends | grep -F 'xfce4-whiskermenu-plugin'
           dpkg-deb --contents dist/parentpilot_0.5.0~preview17_all.deb | grep -F '/usr/lib/parentpilot/setup-root'
@@ -77,6 +80,8 @@ jobs:
           dpkg-deb --contents dist/parentpilot_0.5.0~preview17_all.deb | grep -F '/usr/lib/parentpilot/update_install.py'
           dpkg-deb --contents dist/parentpilot_0.5.0~preview17_all.deb | grep -F '/usr/share/applications/parentpilot-updates.desktop'
           dpkg-deb --contents dist/parentpilot_0.5.0~preview17_all.deb | grep -F '/etc/xdg/autostart/parentpilot-update-check.desktop'
+          ! dpkg-deb --field dist/parentpilot_0.5.0~preview18_all.deb Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb --field dist/parentpilot_0.5.0~preview18_all.deb Depends | grep -F 'vlc'
       - name: Upload ParentPilot installable DEB
         uses: actions/upload-artifact@v4
         with:
