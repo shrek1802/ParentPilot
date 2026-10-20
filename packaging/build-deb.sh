@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview17
+VERSION=0.5.0~preview18
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -60,7 +60,7 @@ done
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
 install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
 install -m 0644 "$ROOT/packaging/parentpilot/child_panel.py" "$STAGING/usr/lib/parentpilot/child_panel.py"
-# Optional approved educational and lightweight 2D APT games.
+# Optional approved educational 2D APT games and Kodi media player.
 install -m 0644 "$ROOT/packaging/parentpilot/games_catalog.py" "$STAGING/usr/lib/parentpilot/games_catalog.py"
 install -m 0644 "$ROOT/packaging/parentpilot/games_gui.py" "$STAGING/usr/lib/parentpilot/games_gui.py"
 install -m 0755 "$ROOT/packaging/parentpilot/games_install.py" "$STAGING/usr/lib/parentpilot/games_install.py"
