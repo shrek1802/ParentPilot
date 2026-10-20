@@ -67,6 +67,16 @@ class SecurityPane:
                         background=PANEL,foreground=SUB,font=('Sans',9,'bold'))
         style.map('Security.TNotebook.Tab',background=[('selected',INSET)],
                   foreground=[('selected',ACCENT)])
+        bottom=tk.Frame(self.frame,bg=INSET,padx=9,pady=6)
+        bottom.pack(side='bottom',fill='x',pady=(5,0))
+        self.action_button=tk.Button(
+            bottom,text='Change parent PIN',command=self.active_action,
+            bg=ACCENT,fg=BG,relief='flat',font=('Sans',10,'bold'),padx=12,pady=6)
+        self.action_button.pack(side='right',padx=(8,0))
+        self.message=tk.StringVar(value='No changes made.')
+        tk.Label(bottom,textvariable=self.message,bg=INSET,fg=SUB,
+                 anchor='w',justify='left',wraplength=365,
+                 font=('Sans',9)).pack(side='left',fill='x',expand=True)
         self.tabs=ttk.Notebook(self.frame,style='Security.TNotebook')
         self.tabs.pack(fill='both',expand=True)
         pin_page=tk.Frame(self.tabs,bg=PANEL,padx=13,pady=10)
@@ -91,16 +101,6 @@ class SecurityPane:
                  bg=PANEL,fg=MUTED,font=('Sans',9),
                  wraplength=580,justify='left').pack(anchor='w')
 
-        bottom=tk.Frame(self.frame,bg=INSET,padx=9,pady=6)
-        bottom.pack(side='bottom',fill='x',pady=(5,0))
-        self.action_button=tk.Button(
-            bottom,text='Change parent PIN',command=self.active_action,
-            bg=ACCENT,fg=BG,relief='flat',font=('Sans',10,'bold'),padx=12,pady=6)
-        self.action_button.pack(side='right',padx=(8,0))
-        self.message=tk.StringVar(value='No changes made.')
-        tk.Label(bottom,textvariable=self.message,bg=INSET,fg=SUB,
-                 anchor='w',justify='left',wraplength=365,
-                 font=('Sans',9)).pack(side='left',fill='x',expand=True)
         self.tabs.bind('<<NotebookTabChanged>>',self.sync_action)
         self.frame.after(150,self.poll)
 
