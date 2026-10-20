@@ -198,8 +198,8 @@ class UpdatesGUI:
         # Two actual panes: friendly release notes and live technical activity.
         self.tabs = ttk.Notebook(main, style='Parent.TNotebook')
         self.tabs.pack(fill='both', expand=True)
-        self.notes = self.make_text_tab('What’s new')
-        self.activity = self.make_text_tab('Update activity')
+        self.notes_tab, self.notes = self.make_text_tab('What’s new')
+        self.activity_tab, self.activity = self.make_text_tab('Update activity')
         self.set_notes('Checking for a published release…')
         self.set_activity('Installation activity will appear here as it happens.\n'
                           'Only an adult administrator can start an update.')
@@ -219,7 +219,7 @@ class UpdatesGUI:
         scrollbar.configure(command=body.yview)
         scrollbar.pack(side='right', fill='y')
         body.pack(side='left', fill='both', expand=True)
-        return body
+        return container, body
 
     def set_notes(self, value):
         self.notes.configure(state='normal')
@@ -339,7 +339,7 @@ class UpdatesGUI:
         self.status_label.configure(fg=RED if identifier == 'restore' else
                                     GREEN if identifier == 'complete' else TEXT)
         if identifier == 'restore':
-            self.tabs.select(self.activity)
+            self.tabs.select(self.activity_tab)
 
     def check(self):
         if self.busy:
@@ -350,7 +350,7 @@ class UpdatesGUI:
         self.status.set('Checking for updates…')
         self.phase.set('Checking published ' + self.channel.get() + ' releases over HTTPS.')
         self.set_notes('Contacting official ParentPilot GitHub Releases…')
-        self.tabs.select(self.notes)
+        self.tabs.select(self.notes_tab)
         chosen = self.channel.get()
         self.start_worker(lambda: fetch_updates(chosen), self.checked)
 
@@ -398,7 +398,7 @@ class UpdatesGUI:
         self.bottom_hint.set('Please keep this window open until the result is confirmed.')
         self.set_activity('Starting the approved update for ' + update['version'] +
                           '\nWaiting for the system administrator password…\n')
-        self.tabs.select(self.activity)
+        self.tabs.select(self.activity_tab)
         args = ['pkexec', '/usr/bin/python3', BACKEND, self.channel.get(),
                 update['tag'], '--sign-out-child']
         self.start_install_worker(args)
