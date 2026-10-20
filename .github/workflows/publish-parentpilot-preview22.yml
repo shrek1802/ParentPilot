@@ -1,0 +1,101 @@
+name: Publish ParentPilot Linux Preview 22
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview22.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39420204151
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 83fe43f34ecdbabbcc504884fda7fa31560acf82
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39420204151 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview22 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview22_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview22'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/screen_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview22_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 22 — screen picture permission settings for existing families
+
+          Adds a new adult-only **ParentPilot Screen Picture Settings** window in the Linux Applications menu, so parents can enable or disable optional, individually requested screen pictures **after** first-time Family Setup, without resetting accounts or screen-time settings.
+
+          - Screen pictures remain **disabled by default**. Installing this update does not enable them.
+          - From the adult administrator session, open ParentPilot Screen Picture Settings, choose **Enable pictures**, confirm, and authenticate through the normal PolicyKit password prompt.
+          - A matching **Disable pictures** action is always available; saved pictures are not deleted by disabling requests.
+          - **Check current setting** safely reports the permission, also requiring administrator approval.
+          - The root helper verifies a managed installation and original private configuration permissions, changes only the `screen_view_enabled` boolean with an atomic write, preserves the original owner/group/mode, and rolls back if the existing ParentPilot service fails to restart.
+          - No child login, account, parent PIN, timer allowance, saved screenshot, installed game, Kodi setting or XFCE panel preference is reset.
+          - Each screen capture must still be requested by an authenticated parent and displays a notice on the child's screen. There is no silent livestream or continuous recording.
+          - Retains Preview 21 battery indicator and Preview 20 UI upgrades.
+
+          **How to update:** Adult Linux account → ParentPilot Updates → preview → Check for updates → install Preview 22. Save child work before approving any updater sign-out. Then reopen the adult **Applications → Settings → ParentPilot Screen Picture Settings**, choose Enable pictures and approve the Linux administrator password. Refresh the Screen tab on the phone app afterward.
+
+          GitHub Actions validated the installer, admin-only configuration helper, privacy rollback, packaged desktop launcher, compact GUI screens (800x480 and 1024x600), timer/lock regressions and Debian build. Actual physical screen-picture capture on the Dell still needs to be tested.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview22 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview22 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 22 - adult screen picture settings"
+          else
+            gh release create v0.5.0-preview22 \
+              publish/parentpilot_0.5.0.preview22_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target 83fe43f34ecdbabbcc504884fda7fa31560acf82 \
+              --title "ParentPilot Linux Preview 22 - adult screen picture settings" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview22 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
