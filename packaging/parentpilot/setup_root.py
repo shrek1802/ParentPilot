@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from preflight import report as host_report
 from child_panel import write_child_panel
 from games_catalog import validate_game_ids
-from games_install import install_selected
+from games_install import install_selected, install_selected_media
 
 APP = Path('/usr/lib/parentpilot/desktop')
 TARGET = Path('/opt/max-family-control')
@@ -59,6 +59,8 @@ def validate(data):
     if not re.fullmatch(r'[0-9]{6}', pin) or pin in ('000000','111111','123456'):
         raise ValueError('Choose a less obvious six-digit parent PIN.')
     validate_game_ids(data.get('games', []))
+    if 'kodi' in data and type(data['kodi']) is not bool:
+        raise ValueError('Invalid Kodi option.')
     if data.get('youtube') not in ('kids','supervised'):
         raise ValueError('Select the YouTube Kids or supervised option.')
     for flag in ('netflix','autologin','family_filter','screen_view'):
@@ -256,7 +258,16 @@ def main():
             print('NOTE: ParentPilot setup succeeded, but some optional games '
                   'were not downloaded. Open ParentPilot Games & Learning from '
                   'the adult Applications menu to retry.', flush=True)
-    print('SUCCESS: ParentPilot is installed for '+name+'.\n')
+    if data.get('kodi', False):
+        print('Installing selected Kodi Media Centre from the official APT repository…', flush=True)
+        added, present, errors = install_selected_media(['kodi'])
+        if errors:
+            print('NOTE: Kodi was unavailable. ParentPilot setup is still complete; '
+                  'an adult can retry later in Games & Learning.', flush=True)
+        else:
+            print('Kodi: ' + ('installed' if added else 'already installed') +
+                  '. Open it from Sound & Video in the normal Applications menu.', flush=True)
+    print('SUCCESS: ParentPilot is installed for '+name+'.\\n')
     print('The child desktop will be ready next time they sign in. Parental controls are paused until approved.')
     print('Browse to https://<laptop-ip>:8743 from your phone, or use the ParentPilot Android app on the same Wi-Fi.')
     print('IMPORTANT: Select the real maturity settings within YouTube and Netflix; shortcuts alone do not guarantee child-safe content.')
