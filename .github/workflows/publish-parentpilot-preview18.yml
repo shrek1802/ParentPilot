@@ -88,7 +88,7 @@ jobs:
             publish/parentpilot_0.5.0.preview18_all.deb publish/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target 709176a89531a1b144eb248bb268c26602ddffe4 \
-            --title "ParentPilot Linux Preview 18 - restore Mint Start menu" \
+            --title "ParentPilot Linux Preview 18 - optional Kodi Media Centre" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --prerelease
           gh release view v0.5.0-preview18 --repo "$GITHUB_REPOSITORY" \
