@@ -72,6 +72,7 @@ try:
     assert ui.status.get() == 'Restoring from backup'
     assert ui.tabs.select() == str(ui.activity_tab)
     print('PASS: Live milestones, activity log, spinner and final result')
-    print('PASS: updater controls remain inside the window on '\n          f'{root.winfo_screenwidth()}x{root.winfo_screenheight()} at 1.5x font scaling')
+    print('PASS: updater controls remain inside the window on '
+          f'{root.winfo_screenwidth()}x{root.winfo_screenheight()} at 1.5x font scaling')
 finally:
     root.destroy()
