@@ -187,6 +187,64 @@ def make_vlc_child_shortcut(home):
     return entry
 
 
+
+# Use the actual Mint XFCE Whisker configuration where available, instead of
+# drawing a faux Mint menu or imposing ParentPilot's old restricted app list.
+MINT_WHISKER_TEMPLATES = (
+    Path('/usr/share/mint-configuration-xfce/xfce4/panel/whiskermenu-1.rc'),
+    Path('/usr/share/mint-artwork/xfce/xfce4/panel/whiskermenu-1.rc'),
+)
+
+
+def ensure_mint_whisker_settings(home, templates=None):
+    """Restore Mint's native Whisker appearance without overwriting preferences.
+
+    Whisker saves its settings in whiskermenu-1.rc, NOT xfconf's plugin
+    button-icon/show-button-* properties. Preserve existing child Whisker
+    favourites/preferences if they already have a valid config.
+    """
+    dest = Path(home) / '.config/xfce4/panel/whiskermenu-1.rc'
+    if dest.is_symlink():
+        raise RuntimeError('Unsafe Whisker configuration symlink.')
+    if dest.is_file():
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    for source in (MINT_WHISKER_TEMPLATES if templates is None else templates):
+        source = Path(source)
+        if source.is_file():
+            try:
+                data = source.read_text(encoding='utf8')
+            except (UnicodeError, OSError):
+                continue
+            if 'button-icon=' in data or 'show-button-title=' in data:
+                # Keep Mint's own menu look, but make Chromium/ParentPilot
+                # the browser on the default favourites page, not Firefox.
+                lines = []
+                for line in data.splitlines():
+                    if line.startswith('favorites='):
+                        fav = [v.strip() for v in line[10:].split(',') if v.strip()]
+                        browser_ids = set(OTHER_BROWSER_DESKTOPS)
+                        fav = [v for v in fav if v not in browser_ids]
+                        if 'parentpilot-browser.desktop' not in fav:
+                            fav.insert(0, 'parentpilot-browser.desktop')
+                        line = 'favorites=' + ','.join(fav)
+                    lines.append(line)
+                dest.write_text('\n'.join(lines) + '\n', encoding='utf8')
+                return dest
+    # Debian/Xubuntu or Mint with no installed artwork template. Still use
+    # the real Whisker plugin and search/categories; no curated-only menu.
+    dest.write_text(
+        'button-icon=linuxmint-logo-ring-symbolic\n'
+        'show-button-icon=true\n'
+        'show-button-title=false\n'
+        'button-title=Menu\n'
+        'favorites=parentpilot-browser.desktop,thunar.desktop,vlc.desktop\n'
+        'menu-width=520\nmenu-height=560\n',
+        encoding='utf8',
+    )
+    return dest
+
+
 def write_child_panel(home, group, youtube=True, netflix=True):
     """Only for freshly created child homes. Single bottom XFCE panel with curated launchers.
     This customisation changes visible launchers, not access control or parent panel.
@@ -214,11 +272,9 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     # not XFCE's basic applicationsmenu plugin.
     app_menu = prop(plugins,'plugin-1','string','whiskermenu')
     prop(app_menu,'show-button-title','bool','false')
-    # Whisker reads the full XDG applications menu, including search,
-    # favourites, categories, VLC, installed games and standard tools.
-    # Use the Linux Mint logo from the Mint icon theme where installed.
-    prop(app_menu,'button-icon','string','distributor-logo')
-    prop(app_menu,'show-button-icon','bool','true')
+    # Whisker reads the normal full applications menu. Its appearance and
+    # favourites are configured by whiskermenu-1.rc below, not XFCE's basic
+    # applicationsmenu configuration fields.
     labels={10:'parentpilot-browser.desktop',11:'thunar.desktop',12:'parentpilot-youtube.desktop',13:'parentpilot-netflix.desktop',14:'parentpilot-vlc.desktop'}
     tasklist=prop(plugins,'plugin-17','string','tasklist')
     prop(tasklist,'grouping','uint',1)
@@ -256,6 +312,7 @@ def write_child_panel(home, group, youtube=True, netflix=True):
     # VLC is a real standalone media player, not another Chromium shortcut.
     make_vlc_child_shortcut(home)
     pdir=home/'.config/xfce4/panel'
+    ensure_mint_whisker_settings(home)
     for number in launcher_ids:
         folder=pdir/f'launcher-{number}'
         folder.mkdir(parents=True,exist_ok=True)
@@ -343,12 +400,6 @@ def xfconf_commands_for_panel(home):
         # installed Whisker plugin, including its full searchable app list.
         [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1',
          '-n', '-t', 'string', '-s', 'whiskermenu'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/button-icon',
-         '-n', '-t', 'string', '-s', 'distributor-logo'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/show-button-icon',
-         '-n', '-t', 'bool', '-s', 'true'],
-        [query, '-c', 'xfce4-panel', '-p', '/plugins/plugin-1/show-button-title',
-         '-n', '-t', 'bool', '-s', 'false'],
         [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/size',
          '-n', '-t', 'uint', '-s', '44'],
         [query, '-c', 'xfce4-panel', '-p', '/panels/panel-1/icon-size',
