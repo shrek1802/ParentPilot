@@ -254,6 +254,7 @@ class UpdatesGUI:
         self.install_button.configure(
             state='disabled' if active or self.release is None else 'normal')
         if active:
+            self.progress.configure(mode='indeterminate', value=0)
             self.progress.start(12)
         else:
             self.progress.stop()
@@ -425,6 +426,8 @@ class UpdatesGUI:
             return
         self.release = None
         self.status.set('Update installed successfully')
+        # Only display 100% after the installer has exited successfully.
+        self.progress.configure(mode='determinate', maximum=100, value=100)
         self.phase.set('The service check passed. Sign the child back in when ready.')
         self.status_label.configure(fg=GREEN)
         self.add_activity('SUCCESS: The ParentPilot installer completed successfully.')
