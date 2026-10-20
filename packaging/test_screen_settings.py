@@ -94,4 +94,19 @@ with patch.object(screen.os, 'geteuid', return_value=1000):
         raise AssertionError('Accepted non-privileged backend process')
     except RuntimeError:
         pass
-print('PASS: adult-only screen permission toggle, explicit enable/disable, retained settings, safe rollback')
+# The default-on upgrade still uses the safe, tested configuration path.
+# Repeated upgrades are no-ops; the transition changes only the one flag.
+with patch.object(screen.sys, 'argv', ['screen_settings.py', '--managed-upgrade']), \
+     patch.object(screen.os, 'geteuid', return_value=0), \
+     patch.object(screen, 'MARKER', SimpleNamespace(is_file=lambda: True)), \
+     patch.object(screen, 'change_screen_pictures', return_value=True) as apply:
+    screen.main()
+    apply.assert_called_once_with(True)
+with patch.object(screen.sys, 'argv', ['screen_settings.py', '--managed-upgrade']), \
+     patch.object(screen.os, 'geteuid', return_value=1000):
+    try:
+        screen.main()
+        raise AssertionError('Unprivileged child accepted for migration')
+    except RuntimeError:
+        pass
+print('PASS: safe always-ready screen pictures, managed upgrades, retained settings, rollback')

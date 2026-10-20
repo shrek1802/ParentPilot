@@ -35,6 +35,7 @@ try:
     gui.v['child_user'].set('testchild')
     gui.step = 2
     gui.draw()
+    assert gui.v['screen_view'].get() is True
     assert 'kodi' in gui.v
     assert not gui.v['kodi'].get()
     assert len(gui.game_choices) == 8

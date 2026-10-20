@@ -247,7 +247,10 @@ def main():
     print('SETUP_PROGRESS:Applying the chosen browser settings…', flush=True)
     configure_chromium(data['youtube'],data['family_filter'])
     print('SETUP_PROGRESS:Installing the ParentPilot timer and control service…', flush=True)
-    install_timer(user,name,pin,data['autologin'],data['screen_view'])
+    # Pictures are available to the authenticated parent by default; the
+    # child still sees a notice before each individual request. Ignore any
+    # obsolete false flag supplied by an older setup window.
+    install_timer(user,name,pin,data['autologin'],True)
     # Optional games never affect successful account/controller setup. Install
     # only approved APT packages, AFTER the timer and managed marker exist.
     # If offline or an APT package is unavailable, the family setup remains

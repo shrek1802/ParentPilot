@@ -1,9 +1,9 @@
 #!/usr/bin/python3
-"""Privileged adult-only ParentPilot screen-picture permission setting.
+"""Privileged ParentPilot screen-picture configuration migration and recovery.
 
-Changes exactly one boolean in the existing managed configuration. No account,
-PIN, screenshot, token, timer, or screen-time value is reset. Installed only
-with the ParentPilot DEB; called by pkexec after adult approval.
+The managed upgrade enables on-demand, parent-authenticated pictures, leaving
+each child's visible capture notification intact. Modifies exactly one boolean
+in an existing managed installation, retaining all other protected settings.
 """
 import grp
 import json
@@ -108,6 +108,17 @@ def change_screen_pictures(enable, runner=subprocess.run):
 
 
 def main():
+    # dpkg postinst is already privileged and only runs after the adult
+    # authorises a package upgrade. No unprivileged child may invoke this.
+    if sys.argv[1:] == ['--managed-upgrade']:
+        if os.geteuid() != 0:
+            raise RuntimeError('The managed upgrade must run from the package installer.')
+        if not MARKER.is_file():
+            print('SCREEN_PICTURES:skipped-unmanaged', flush=True)
+            return
+        change_screen_pictures(True)
+        print('SCREEN_PICTURES:enabled', flush=True)
+        return
     if len(sys.argv) != 2 or sys.argv[1] not in (
         '--status', '--enable', '--disable'):
         raise RuntimeError('Unsupported ParentPilot Screen Pictures operation.')

@@ -57,7 +57,7 @@ class Wizard:
             'netflix':tk.BooleanVar(value=True),
             'autologin':tk.BooleanVar(value=bool(self.preflight.get('lightdm'))),
             'family_filter':tk.BooleanVar(value=True),
-            'screen_view':tk.BooleanVar(value=False),
+            'screen_view':tk.BooleanVar(value=True),
             'kodi':tk.BooleanVar(value=False),
         }
         # Optional game choices are independent of child account/settings
@@ -247,8 +247,12 @@ class Wizard:
             self.lbl(self.body,'Automatic login is unavailable without LightDM. Your child can still sign in normally.',10,SUB,pad=7)
         self.checked(self.body,'Apply family filtering to Chromium on this computer','family_filter')
         self.lbl(self.body,'Filtering policies apply to ALL Chromium accounts on this computer, including the parent. YouTube and Netflix age/profile settings must be set up separately.',10,SUB,pad=7)
-        self.checked(self.body,"Optional: let a parent request a picture of the child's screen",'screen_view')
-        self.lbl(self.body,'OFF by default. If enabled, a signed-in parent can ask for one screen picture without the child approving each request. The child sees a clear on-screen viewing notice each time. No hidden capture, live video or recording. Each picture expires after 30 seconds.',10,SUB,pad=7)
+        self.lbl(self.body,'Screen pictures',12,TEXT,True,pad=14)
+        self.lbl(self.body,'Included: an authenticated parent can request an individual '
+                 'screen picture from their ParentPilot app. A visible notice appears '
+                 'on the child’s laptop each time. No continuous streaming, '
+                 'background recording or automatic screenshot storage.',
+                 10,SUB,wrap=590,pad=3)
         self.lbl(self.body, 'Optional free games (tick any you want)', 12, TEXT, True, pad=18)
         self.lbl(self.body,
                  'Suitable for many older PCs including the Dell Inspiron N5110. '
@@ -283,7 +287,7 @@ class Wizard:
         self.summary_row('Chromium family policy',
                          'Enabled' if self.v['family_filter'].get() else 'Off')
         self.summary_row('Parent screen picture requests',
-                         'Parent-authorised with a child notice' if self.v['screen_view'].get() else 'Off')
+                         'Ready for authenticated requests; child notified for each picture')
         chosen=[title for game_id,title,*_ in GAMES if self.game_choices[game_id].get()]
         self.summary_row('Optional games',', '.join(chosen) if chosen else 'None selected')
         self.summary_row('Kodi Media Centre',

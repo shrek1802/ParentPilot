@@ -11,7 +11,7 @@ ParentPilot provides a guided setup for family screen-time controls on Debian-ba
 3. Open the DEB in your distro's package manager and approve installation.
 4. Open **ParentPilot Family Setup** from the applications menu. The compatibility check runs before child account changes.
 5. Choose the child's display name, standard Linux username, child login password and **separate six-digit parent PIN**.
-6. Choose supervised YouTube/YouTube Kids shortcuts, optional Netflix, Chromium filtering, optional screen pictures and optional LightDM auto-login where supported.
+6. Choose supervised YouTube/YouTube Kids shortcuts, optional Netflix, Chromium filtering and optional LightDM auto-login. Screen-picture requests are included with a child-visible notification.
 7. Review the configuration carefully, click **Install ParentPilot**, and approve the administrator authentication prompt.
 8. After setup, sign into the child's account and test granting time, expiry, pause and parent PIN access.
 
@@ -49,16 +49,13 @@ No update notification appears until a newer qualifying GitHub Release is publis
 - Menu shortcut hiding is cosmetic and is not an operating-system app restriction. The screen lock is **best-effort**, not a tamper-proof kiosk.
 
 
-## Optional screen pictures (Preview 7)
+## On-demand screen pictures (Preview 23)
 
-Screen viewing is **off by default**. A parent can enable it during the administrator-led setup wizard. On an already configured ParentPilot laptop, open **ParentPilot Screen Picture Settings** from the adult Linux Applications menu. Choose **Enable pictures**, confirm, and approve the Linux administrator-password prompt. The authenticated settings helper changes only this optional setting and briefly restarts the ParentPilot service to apply it; there is no need to rerun Family Setup or recreate the child account. Use the same window to disable requests at any time. Saved pictures remain private and are not deleted by switching capture off. After signing into the parent dashboard, they can:
+Screen pictures are **available by default** to an **authenticated parent**, including on existing DEB-managed installations upgraded through the administrator-approved ParentPilot updater. No additional laptop-wide on/off setting is needed. The upgrade changes only the existing screen-picture permission flag and keeps the account, parent PIN, timer, token, and saved pictures unchanged.
 
-- Request an individual screenshot. A clear notice appears on the child desktop before capture; the child is not asked to approve every request.
-- Tap a picture to enlarge it and zoom.
-- Select **Save this picture** to keep a particular image for later discussion. Unsaved pictures expire after two minutes.
-- Revisit, download or delete pictures from the private saved gallery (20-picture limit).
+This does **not** mean continuous surveillance: a parent must request each picture from the signed-in ParentPilot phone app or web panel, and the child's desktop shows a clear notification before each picture. There is no background stream or automatic recording. A preview expires unless the parent explicitly chooses to save it. The private gallery has a fixed retention count, and the parent can delete saved pictures.
 
-This is **not live video, hidden monitoring or automatic recording**. Requests have a 45-second interval. Saved files remain locally on the child laptop until deleted. Browser access requires parent authentication, and save/delete operations require anti-CSRF protection. Screen capture uses GTK/Gdk on X11 and still needs testing across different desktops.
+If a managed upgrade cannot safely update the configuration or the service fails to restart, the permission migration is rolled back and the updater reports the error. Do **not** rerun Family Setup on an existing laptop. This release deliberately changes the default permission; review this behaviour before approving the update.
 
 ## Lock-screen reliability (Preview 7)
 

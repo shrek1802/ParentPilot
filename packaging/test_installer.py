@@ -14,6 +14,8 @@ m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 valid={'child_name':'Max','child_user':'maxchild','child_password':'complex#2026',
        'parent_pin':'724951','youtube':'kids','netflix':True,'autologin':True,'family_filter':True,'screen_view':False}
 assert m.validate(valid)==('Max','maxchild','complex#2026','724951')
+assert 'install_timer(user,name,pin,data[\'autologin\'],True)' in p.read_text(), (
+    'Fresh setup must enable on-demand parent pictures irrespective of old flag')
 # Requested child Linux login password minimum is six; parent PIN stays six digits.
 assert m.validate({**valid, 'child_password': 'Ab12!x'})[2] == 'Ab12!x'
 for changed in ({'child_user':'root'},{'child_user':'Xx'},{'child_user':'not ok'},

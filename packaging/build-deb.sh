@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview22
+VERSION=0.5.0~preview23
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -20,7 +20,7 @@ Homepage: https://github.com/shrek1802/ParentPilot
 Description: ParentPilot family screen-time setup for Debian-family XFCE/X11
  Guided graphical setup creates a non-admin child account, parent PIN,
  screen-time timer, local phone controls, and a curated child desktop.
- Optional parent-requested screen pictures and private saved gallery are off by default.
+ On-demand parent-authenticated screen pictures show the child a visible notice.
  Installs no child account or timer until an administrator finishes the wizard.
 EOF
 # Debian control files cannot expand misc Depends without debhelper.
@@ -47,7 +47,7 @@ cat > "$STAGING/usr/share/metainfo/uk.parentpilot.ParentPilot.metainfo.xml" <<'E
   <description>
     <p>Set up a separate child account, screen-time rules and child-friendly
     shortcuts with a guided parent wizard. Fresh Debian-family XFCE/X11
-    installations only. Existing family settings are never automatically changed.</p>
+    installations only. Existing accounts and screen-time settings are preserved.</p>
   </description>
   <launchable type="desktop-id">parentpilot-setup.desktop</launchable>
   <url type="homepage">https://github.com/shrek1802/ParentPilot</url>
@@ -60,26 +60,8 @@ done
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
 install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
 install -m 0644 "$ROOT/packaging/parentpilot/child_panel.py" "$STAGING/usr/lib/parentpilot/child_panel.py"
-# Adult-only privacy setting: separately authenticated through PolicyKit.
-# Never automatically opt in to screen pictures during upgrades.
-install -m 0644 "$ROOT/packaging/parentpilot/screen_settings_gui.py" "$STAGING/usr/lib/parentpilot/screen_settings_gui.py"
+# Privileged migration for managed upgrades, not a separate end-user switch.
 install -m 0755 "$ROOT/packaging/parentpilot/screen_settings.py" "$STAGING/usr/lib/parentpilot/screen_settings.py"
-cat > "$STAGING/usr/bin/parentpilot-screen-settings" <<'EOF'
-#!/bin/sh
-exec /usr/bin/python3 /usr/lib/parentpilot/screen_settings_gui.py "$@"
-EOF
-chmod 0755 "$STAGING/usr/bin/parentpilot-screen-settings"
-cat > "$STAGING/usr/share/applications/parentpilot-screen-settings.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=ParentPilot Screen Picture Settings
-Comment=Adult-only controls for optional, visibly notified screen pictures
-Exec=parentpilot-screen-settings
-Icon=parentpilot
-Categories=Settings;System;
-Terminal=false
-StartupNotify=true
-EOF
 # Optional approved educational 2D APT games and Kodi media player.
 install -m 0644 "$ROOT/packaging/parentpilot/games_catalog.py" "$STAGING/usr/lib/parentpilot/games_catalog.py"
 install -m 0644 "$ROOT/packaging/parentpilot/games_gui.py" "$STAGING/usr/lib/parentpilot/games_gui.py"
@@ -166,7 +148,12 @@ set -e
 # The wizard gets explicit consent and PolicyKit auth instead.
 if [ "$1" = configure ]; then
     if [ -n "${2:-}" ]; then
-        echo 'ParentPilot package upgraded. Existing child settings were preserved. Use ParentPilot Updates to deploy verified program files to configured laptops.'
+        # A prior admin-approved update may have left screenshot requests
+        # disabled. Preview 23 makes on-demand, visibly notified pictures
+        # available by default. This migrates only the managed boolean,
+        # preserving accounts, PIN, time allowance and saved pictures.
+        /usr/bin/python3 /usr/lib/parentpilot/screen_settings.py --managed-upgrade
+        echo 'ParentPilot upgraded. On-demand parent screen pictures enabled; child is notified per request. Existing accounts and time settings preserved.'
     else
         echo 'ParentPilot installed. Open "ParentPilot Family Setup" from the applications menu to create a child account.'
     fi
