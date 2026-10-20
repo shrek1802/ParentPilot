@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview21
+VERSION=0.5.0~preview22
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -60,6 +60,26 @@ done
 install -m 0644 "$ROOT/packaging/parentpilot/wizard.py" "$STAGING/usr/lib/parentpilot/wizard.py"
 install -m 0644 "$ROOT/packaging/parentpilot/preflight.py" "$STAGING/usr/lib/parentpilot/preflight.py"
 install -m 0644 "$ROOT/packaging/parentpilot/child_panel.py" "$STAGING/usr/lib/parentpilot/child_panel.py"
+# Adult-only privacy setting: separately authenticated through PolicyKit.
+# Never automatically opt in to screen pictures during upgrades.
+install -m 0644 "$ROOT/packaging/parentpilot/screen_settings_gui.py" "$STAGING/usr/lib/parentpilot/screen_settings_gui.py"
+install -m 0755 "$ROOT/packaging/parentpilot/screen_settings.py" "$STAGING/usr/lib/parentpilot/screen_settings.py"
+cat > "$STAGING/usr/bin/parentpilot-screen-settings" <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/parentpilot/screen_settings_gui.py "$@"
+EOF
+chmod 0755 "$STAGING/usr/bin/parentpilot-screen-settings"
+cat > "$STAGING/usr/share/applications/parentpilot-screen-settings.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ParentPilot Screen Picture Settings
+Comment=Adult-only controls for optional, visibly notified screen pictures
+Exec=parentpilot-screen-settings
+Icon=parentpilot
+Categories=Settings;System;
+Terminal=false
+StartupNotify=true
+EOF
 # Optional approved educational 2D APT games and Kodi media player.
 install -m 0644 "$ROOT/packaging/parentpilot/games_catalog.py" "$STAGING/usr/lib/parentpilot/games_catalog.py"
 install -m 0644 "$ROOT/packaging/parentpilot/games_gui.py" "$STAGING/usr/lib/parentpilot/games_gui.py"

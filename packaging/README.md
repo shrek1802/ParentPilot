@@ -51,7 +51,7 @@ No update notification appears until a newer qualifying GitHub Release is publis
 
 ## Optional screen pictures (Preview 7)
 
-Screen viewing is **off by default**. A parent can enable it during the administrator-led setup wizard. After signing into the parent dashboard, they can:
+Screen viewing is **off by default**. A parent can enable it during the administrator-led setup wizard. On an already configured ParentPilot laptop, open **ParentPilot Screen Picture Settings** from the adult Linux Applications menu. Choose **Enable pictures**, confirm, and approve the Linux administrator-password prompt. The authenticated settings helper changes only this optional setting and briefly restarts the ParentPilot service to apply it; there is no need to rerun Family Setup or recreate the child account. Use the same window to disable requests at any time. Saved pictures remain private and are not deleted by switching capture off. After signing into the parent dashboard, they can:
 
 - Request an individual screenshot. A clear notice appears on the child desktop before capture; the child is not asked to approve every request.
 - Tap a picture to enlarge it and zoom.
