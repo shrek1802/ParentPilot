@@ -101,8 +101,29 @@ with tempfile.TemporaryDirectory() as d:
     assert (apps/'parentpilot-vlc.desktop').is_file()
 
     app_menu = x.find(".//property[@name='plugin-1']")
-    assert app_menu.find("./property[@name='custom-menu']").get('value') == 'false'
+    assert app_menu.get('value') == 'whiskermenu', 'The original Linux Mint menu is Whisker, not basic applicationsmenu'
     assert app_menu.find("./property[@name='custom-menu-file']") is None
+    profile = home/'.config/xfce4/panel/whiskermenu-1.rc'
+    assert profile.is_file()
+    assert 'parentpilot-browser.desktop' in profile.read_text()
+    assert 'show-button-title=false' in profile.read_text()
+    # A Mint artwork profile, where available, is preferred over a custom one.
+    with tempfile.TemporaryDirectory() as other:
+        original = pathlib.Path(other)/'mint-original.rc'
+        original.write_text('button-icon=linuxmint-logo-ring-symbolic\n'
+                            'show-button-title=false\n'
+                            'favorites=firefox.desktop,thunar.desktop,vlc.desktop\n'
+                            'menu-width=600\n')
+        new_home = pathlib.Path(other)/'child'
+        new_path = cp.ensure_mint_whisker_settings(new_home, templates=(original,))
+        config = new_path.read_text()
+        assert 'menu-width=600' in config  # Unmodified native Mint sizing
+        assert 'firefox.desktop' not in config
+        assert 'parentpilot-browser.desktop' in config
+        # Never clobber a child-customised Whisker profile during updates.
+        new_path.write_text('button-icon=my-own-icon\nshow-button-title=true\n')
+        assert cp.ensure_mint_whisker_settings(new_home, templates=(original,)) == new_path
+        assert new_path.read_text() == 'button-icon=my-own-icon\nshow-button-title=true\n'
     assert not (home/'.config/menus/parentpilot.menu').exists()
     assert not (apps/'parentpilot-files.desktop').exists()
     assert not (apps/'parentpilot-logout.desktop').exists()
@@ -174,7 +195,7 @@ with tempfile.TemporaryDirectory() as d:
     commands=cp.xfconf_commands_for_panel(home)
     assert len(commands) >= 8
     assert any('/panels/panel-1/plugin-ids' in c for c in commands)
-    assert any('/plugins/plugin-1/custom-menu' in c and c[-1] == 'false' for c in commands)
+    assert any('/plugins/plugin-1' == c[4] and c[-1] == 'whiskermenu' for c in commands)
     assert any('/plugins/plugin-17' in c and 'tasklist' in c for c in commands)
     assert any('/plugins/plugin-14/items' in c for c in commands)
     assert any('/plugins/plugin-21/icon-size' in c and c[-1] == '20' for c in commands)
@@ -191,9 +212,10 @@ with tempfile.TemporaryDirectory() as d:
             calls.append(cmd)
             return SimpleNamespace(returncode=0)
         assert cp.apply_session_panel(home=home, runner=run_fake)
-        assert len(calls) == len(commands)
+        assert len(calls) == len(commands) + 1
+        assert calls[-1] == ['xfce4-panel', '--restart'], 'Whisker plugin must be reloaded once'
         assert cp.apply_session_panel(home=home, runner=run_fake)
-        assert len(calls) == len(commands), 'Already-applied layouts must not flap at login'
+        assert len(calls) == len(commands) + 1, 'Already-applied layouts must not flap at login'
 
     with tempfile.TemporaryDirectory() as unrelated:
         assert cp.xfconf_commands_for_panel(pathlib.Path(unrelated)) == []
