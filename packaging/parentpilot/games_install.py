@@ -12,7 +12,7 @@ import pwd
 import subprocess
 import sys
 
-from games_catalog import BY_ID, validate_game_ids
+from games_catalog import BY_ID, BY_MEDIA_ID, validate_game_ids, validate_media_ids
 
 MARKER = Path('/etc/max-family-control/.parentpilot-deb-managed')
 CFG = Path('/etc/max-family-control/config.json')
@@ -50,17 +50,12 @@ def is_installed(package, runner=subprocess.run):
     return result.returncode == 0 and result.stdout.strip() == 'install ok installed'
 
 
-def install_selected(game_ids, runner=subprocess.run):
-    """Install only approved APT IDs and report individual failures.
-
-    No additional custom repositories, Flatpaks, scripts or installers. Only
-    explicitly selected games are requested; nothing is uninstalled.
-    """
-    selected = validate_game_ids(list(game_ids))
+def _install_approved(selected, catalogue, runner):
+    """Only allowlisted APT packages; no repo additions, uninstall or add-ons."""
     installed, existing, failed = [], [], []
-    for game_id in selected:
-        display = BY_ID[game_id][1]
-        package = BY_ID[game_id][4]
+    for item_id in selected:
+        display = catalogue[item_id][1]
+        package = catalogue[item_id][4]
         print('Checking ' + display + '…', flush=True)
         try:
             if is_installed(package, runner=runner):
@@ -87,6 +82,16 @@ def install_selected(game_ids, runner=subprocess.run):
     return installed, existing, failed
 
 
+def install_selected(game_ids, runner=subprocess.run):
+    """Install only parent's selected, allowlisted educational games."""
+    return _install_approved(validate_game_ids(list(game_ids)), BY_ID, runner)
+
+
+def install_selected_media(media_ids, runner=subprocess.run):
+    """Install only the selected official distribution media-player package."""
+    return _install_approved(validate_media_ids(list(media_ids)), BY_MEDIA_ID, runner)
+
+
 def main():
     if os.geteuid() != 0:
         raise RuntimeError('Game installation requires administrator permission.')
@@ -99,19 +104,21 @@ def main():
     if len(payload) > 2048:
         raise ValueError('Game selection is too large.')
     request = json.loads(payload)
-    if not isinstance(request, dict) or set(request) != {'games'}:
-        raise ValueError('Invalid game installation request.')
+    if not isinstance(request, dict) or set(request) not in ({'games'}, {'games', 'media'}):
+        raise ValueError('Invalid app installation request.')
     selection = validate_game_ids(request['games'])
-    if not selection:
-        print('No games selected. Nothing changed.')
+    media = validate_media_ids(request.get('media', []))
+    if not selection and not media:
+        print('Nothing selected. Nothing changed.')
         return
     installed, existing, failed = install_selected(selection)
-    print('Finished. New games: ' + str(len(installed)) +
-          ' · Already present: ' + str(len(existing)) +
-          ' · Unavailable: ' + str(len(failed)), flush=True)
-    if failed:
-        raise RuntimeError('Some games could not be installed. Check the message above. '
-                           'Other installed games remain available. Confirm your internet '
+    media_installed, media_existing, media_failed = install_selected_media(media)
+    print('Finished. New apps: ' + str(len(installed) + len(media_installed)) +
+          ' · Already present: ' + str(len(existing) + len(media_existing)) +
+          ' · Unavailable: ' + str(len(failed) + len(media_failed)), flush=True)
+    if failed or media_failed:
+        raise RuntimeError('Some selected apps could not be installed. Check the message above. '
+                           'Other apps remain available. Confirm your internet '
                            'connection and APT repositories, then try again.')
 
 
