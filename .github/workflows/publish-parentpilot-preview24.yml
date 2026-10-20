@@ -1,0 +1,109 @@
+name: Publish ParentPilot Linux Preview 24
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview24.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39423737300
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 9eafc083af4d235597158df82c709fde44c1d6ab
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39423737300 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview24 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview24_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview24'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/screen_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/account_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/control_centre.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-control-centre.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-games.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-updates.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview24_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Preview 24 — unified Control Centre and pinned-app fix
+
+          This release adds one **ParentPilot Control Centre** for the adult administrator, preserving the safe existing installer workflows.
+
+          - **Home:** installed version, ParentPilot service status, and help for managing the family laptop
+          - **Updates:** the existing verified GitHub updater, its release notes, live progress stages, private backup and child-only sign-out approval embedded in the main window
+          - **Games & Media:** existing approved APT games and optional Kodi with installed/available labels, real per-app progress and administrator authentication, embedded in the same window
+          - **Security:** change the six-digit parent PIN (current PIN + Linux administrator approval) or the existing child Linux login password (administrator approval; takes effect at next login)
+          - **Help:** clear explanations of screen time, pinned shortcuts, PIN changes and media apps
+          - The previous separate Games & Learning and Updates menu entries are replaced by **Applications → Settings → ParentPilot Control Centre**. Their command-line wrappers remain for backwards compatibility and update notifications. First-time Family Setup remains separate only for new installations.
+          - **Kodi taskbar fix:** upgrades now leave the child-owned XFCE panel layout and all plugin IDs unchanged. Existing manual Kodi or game pins and their chosen positions are preserved, rather than rebuilding the panel and forcing a restart.
+          - No accounts are recreated and no PINs, time allowances, child login credentials, screenshots, screen locks, Kodi installations or other app settings are reset.
+          - PINs remain salted PBKDF2 hashes. Child password updates are performed with the system `chpasswd` command using a one-use stdin pipe, never command-line arguments. Existing parent sessions are cleared after a PIN change.
+
+          **Update procedure:** On the adult Linux account open the installed ParentPilot Updates app, choose the preview channel, Check for updates, install Preview 24 and approve child sign-out only after saving work. After the update, use **ParentPilot Control Centre** for future changes.
+
+          **Pinned Kodi:** If an earlier version already removed the Kodi taskbar pin, manually pin Kodi again *once* after Preview 24. Future managed upgrades will preserve that position.
+
+          GitHub Actions passed installer security, account-change validation and rollback, lock/timer regression, 1024x600/800x480 Control Centre and existing UI tests, and Debian package inspection. Physical installation, actual PolicyKit credential changes and taskbar rendering still need confirmation on the Dell laptop.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview24 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview24 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 24 - Control Centre and pinned Kodi fix"
+          else
+            gh release create v0.5.0-preview24 \
+              publish/parentpilot_0.5.0.preview24_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target 9eafc083af4d235597158df82c709fde44c1d6ab \
+              --title "ParentPilot Linux Preview 24 - Control Centre and pinned Kodi fix" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview24 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
