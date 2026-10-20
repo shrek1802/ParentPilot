@@ -1,0 +1,110 @@
+name: Publish ParentPilot Linux Preview 25
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview25.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39426236054
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = f7849a12f70d87bff0c6741d71835b144d0332db
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39426236054 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview25 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview25_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview25'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/screen_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/account_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/control_centre.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-control-centre.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-games.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-updates.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview25_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Preview 25 — more optional educational games
+
+          Expanded the Games & Media catalogue from eight to fifteen optional official Ubuntu/Linux Mint APT games, keeping the single adult ParentPilot Control Centre.
+
+          ### Seven new choices
+          - KGeography — countries, capitals, flags and map learning; KDE educational dependencies.
+          - Blinken — Simon-style memory and sequence game; KDE libraries.
+          - KTuberling — creative build-a-picture activity; KDE libraries.
+          - SuperTuxKart — fun 3D kart racing, but a larger download and potentially slow on the Dell Inspiron N5110 Intel graphics.
+          - Extreme Tux Racer — snowy 3D sliding and racing; reduce graphics settings on older computers.
+          - Minetest (older Ubuntu package; project now called Luanti) — Minecraft-like worlds; choose local/offline play to avoid public servers.
+          - Hedgewars — turn-based, Worms-like strategy; larger download.
+
+          All fifteen game entries are kept in clear Learning, Creative, Puzzles and Just for Fun sections, with installed/available labels and the existing progress bar. Every new game is OFF until a parent explicitly ticks it. The installation runs only the official allowlisted distribution packages through APT with administrator approval, and neither installs all packages nor removes installed software. Kodi and VLC remain unchanged. Previously installed games, PIN, timer, screenshots, child login and all taskbar pins remain intact.
+
+          **Chromium prompt:** We have not altered Chromium password storage or the encrypted login keyring. On XFCE automatic-login systems, a browser prompt can come from the separately locked keyring rather than ParentPilot. The exact dialog should be checked before changing anything; this update does not weaken browser credentials to bypass the prompt.
+
+          **Update:** From the adult account open ParentPilot Control Centre → Updates → preview → Check for updates → install Preview 25. Then open Games & Media and select any new apps you want. The change doesn't automatically install games.
+
+          GitHub Actions tested the game allowlist and validation, the full Python/regression suite, official Ubuntu package availability for all seven additions, 800x480/1024x600 GUIs, timer/lock behaviour and DEB contents. Physical 3D game performance and Chromium keyring behaviour on the Dell have not yet been tested.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview25 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview25 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 25 - Seven additional optional games"
+          else
+            gh release create v0.5.0-preview25 \
+              publish/parentpilot_0.5.0.preview25_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target f7849a12f70d87bff0c6741d71835b144d0332db \
+              --title "ParentPilot Linux Preview 25 - Seven additional optional games" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview25 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
