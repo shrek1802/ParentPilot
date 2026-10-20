@@ -1,0 +1,105 @@
+name: Publish ParentPilot Linux Preview 26
+
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths: ['.github/workflows/publish-parentpilot-preview26.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require successful verified source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39440747938
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = e1859c41d6d4e334fafa5973f8fed16f67093806
+      - name: Download tested Debian package and check Whisker dependency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39440747938 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview26 --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview26_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview26'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-whiskermenu-plugin'
+          dpkg-deb -f "$deb" Depends | grep -F 'xfce4-power-manager-plugins'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/screen_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/account_settings.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/control_centre.py'
+          dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-control-centre.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-games.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-updates.desktop'
+          ! dpkg-deb -c "$deb" | grep -F '/usr/share/applications/parentpilot-screen-settings.desktop'
+          dpkg-deb -f "$deb" Depends | grep -F 'vlc'
+          ! dpkg-deb -f "$deb" Depends | grep -E '(^|, )kodi(,|$)'
+          dpkg-deb -c "$deb" | grep -F '/usr/lib/parentpilot/kodi_flatpak_test.py'
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/package-files.txt"
+          for file in \
+            /usr/lib/parentpilot/child_panel.py \
+            /usr/lib/parentpilot/update_install.py \
+            /usr/lib/parentpilot/games_gui.py \
+            /usr/lib/parentpilot/desktop/max_desktop.py
+          do
+            grep -F "$file" "$RUNNER_TEMP/package-files.txt" > /dev/null
+          done
+          cp "$deb" publish/parentpilot_0.5.0.preview26_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+      - name: Prepare release notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Preview 26 — side-by-side newer Kodi test
+
+          The ParentPilot Control Centre → Games & Media page now has an optional **New Kodi — Separate Test** installer. The tested feature keeps APT Kodi 20.5 and all its settings installed and untouched.
+
+          - An adult must click **Install newer Kodi for testing**, confirm the implications, and approve the Linux administrator password.
+          - Uses the signed official Flathub stable `tv.kodi.Kodi//stable` package, checks the remote URL and shows the actual installed version.
+          - If needed, installs Flatpak itself through official distribution APT. System-wide installation lets the child account launch the new Kodi.
+          - A separate **Kodi (New Version Test)** Applications → Multimedia launcher opens it. The old Kodi launcher, pinned XFCE taskbar item, addon/library data in `~/.kodi`, and APT package remain intact.
+          - The new build stores settings separately under `~/.var/app/tv.kodi.Kodi`; no migration or replacement occurs.
+          - May need a large Flatpak/runtime download; the ParentPilot screen shows real installation stages and a moving indicator rather than inventing download percentages.
+          - Nothing runs automatically during a normal ParentPilot upgrade. Simply installing Preview 26 will not install a second Kodi or switch default versions.
+          - Once installed, physically test menus, 720p/1080p playback and sound on the Dell. The old Intel graphics may limit video performance.
+
+          GitHub Actions checked the root installer, signed Flathub URL validation, allowlisted commands, safe launchers and idempotence, progress GUI on both compact screen sizes, Debian contents, screen-time locks and account security. Actual physical Flatpak install and video playback on the Dell remain to be tested.
+
+          EOF
+      - name: Publish verified preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview26 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A previous run may have created the release before the heading
+            # correction. Change metadata only: never overwrite tested assets.
+            gh release edit v0.5.0-preview26 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ParentPilot Linux Preview 26 - Separate stable Kodi Flatpak test"
+          else
+            gh release create v0.5.0-preview26 \
+              publish/parentpilot_0.5.0.preview26_all.deb publish/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target e1859c41d6d4e334fafa5973f8fed16f67093806 \
+              --title "ParentPilot Linux Preview 26 - Separate stable Kodi Flatpak test" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --prerelease
+          fi
+          gh release view v0.5.0-preview26 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
