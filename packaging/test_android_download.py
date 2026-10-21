@@ -34,11 +34,13 @@ assert open_apk_download(opener=lambda url: visited.append(url)) is None
 assert visited == [DOWNLOAD_URL]
 
 root = tk.Tk()
-root.withdraw()
+# A transient Tk dialog must have a mapped adult parent window on X11.
+root.geometry('320x220')
+root.update()
 win = None
 try:
     win = show_download_qr(root)
-    root.update_idletasks()
+    root.update()
     assert win.winfo_exists()
     assert win.winfo_width() <= win.winfo_screenwidth()
     assert win.winfo_height() <= win.winfo_screenheight()
