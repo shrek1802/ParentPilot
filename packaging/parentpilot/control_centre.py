@@ -18,6 +18,7 @@ from tkinter import messagebox, ttk
 from updates_gui import UpdatesGUI
 from games_gui import GamesGUI
 from update_release import installed_version
+from android_download import show_download_qr
 
 BG='#0f172a'
 PANEL='#1e293b'
@@ -280,11 +281,36 @@ class Centre:
                      font=('Sans',9,'bold'),anchor='w').pack(fill='x')
             tk.Label(panel,text=value,bg=PANEL,fg=TEXT,
                      font=('Sans',11),anchor='w',wraplength=550).pack(fill='x')
+        android_card=tk.Frame(frame,bg=INSET,padx=12,pady=9)
+        android_card.pack(fill='x',pady=(11,0))
+        heading=tk.Frame(android_card,bg=INSET)
+        heading.pack(side='left',fill='x',expand=True)
+        tk.Label(heading,text='Install the Android parent app',bg=INSET,fg=TEXT,
+                 font=('Sans',11,'bold'),anchor='w').pack(anchor='w')
+        tk.Label(heading,text='Scan a QR code to download the permanently signed APK.',
+                 bg=INSET,fg=SUB,font=('Sans',9),wraplength=340,
+                 justify='left',anchor='w').pack(anchor='w',pady=(2,0))
+        self.android_qr_button=tk.Button(
+            android_card,text='Show QR code',command=self.open_android_qr,
+            bg=ACCENT,fg=BG,activebackground='#7dd3fc',activeforeground=BG,
+            font=('Sans',10,'bold'),padx=10,pady=7,
+            relief='flat',cursor='hand2')
+        self.android_qr_button.pack(side='right',padx=(7,0))
         tk.Label(frame,text='Use the tabs above to install games or Kodi, check updates, '
                  'or change the parent PIN and child login password. '
                  'The timer and screen lock continue working independently.',
                  bg=BG,fg=SUB,font=('Sans',9),justify='left',
                  wraplength=700).pack(anchor='w',pady=(14,0))
+
+    def open_android_qr(self):
+        try:
+            return show_download_qr(self.root)
+        except (ValueError, OSError, tk.TclError) as exc:
+            messagebox.showerror('Android app QR unavailable',
+                'The official signed APK QR could not be opened.\\n\\n'
+                'Please use the official ParentPilot GitHub Releases page.\\n\\n'
+                + str(exc)[:160], parent=self.root)
+            return None
 
     def help(self,parent):
         frame=tk.Frame(parent,bg=BG,padx=15,pady=14)
@@ -298,6 +324,7 @@ class Centre:
             ('Child password','Change the existing Linux account password; do not run Family Setup again. New password applies at the next sign-in.'),
             ('Pinned apps','ParentPilot no longer rebuilds the child taskbar during upgrades, preserving manually pinned Kodi and other shortcuts.'),
             ('Screen pictures','The authenticated parent can request one picture at a time. The child sees a notice; nothing is recorded continuously.'),
+            ('Android parent app','On Home, select Show QR code, scan with an Android phone and download the permanently signed ParentPilot APK from the official GitHub Release. Android 8 or newer.'),
         )
         for heading,detail in topics:
             tk.Label(frame,text=heading,bg=BG,fg=ACCENT,
