@@ -2,7 +2,7 @@
 # Build self-contained ParentPilot source .deb (native dependency resolution via APT).
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.5.0~preview29
+VERSION=0.5.0~preview30
 OUT="${1:-$ROOT/dist}"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -82,6 +82,7 @@ install -m 0644 "$ROOT/packaging/parentpilot/updates_gui.py" "$STAGING/usr/lib/p
 install -m 0755 "$ROOT/packaging/parentpilot/update_install.py" "$STAGING/usr/lib/parentpilot/update_install.py"
 install -m 0755 "$ROOT/packaging/parentpilot/account_settings.py" "$STAGING/usr/lib/parentpilot/account_settings.py"
 install -m 0644 "$ROOT/packaging/parentpilot/control_centre.py" "$STAGING/usr/lib/parentpilot/control_centre.py"
+install -m 0644 "$ROOT/packaging/parentpilot/android_download.py" "$STAGING/usr/lib/parentpilot/android_download.py"
 cat > "$STAGING/usr/bin/parentpilot-control-centre" <<'EOF'
 #!/bin/sh
 exec /usr/bin/python3 /usr/lib/parentpilot/control_centre.py "$@"
