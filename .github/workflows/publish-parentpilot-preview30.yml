@@ -1,0 +1,92 @@
+name: Publish ParentPilot Linux Preview 30
+
+# One-time publication of the successfully tested QR download integration.
+on:
+  push:
+    branches: [feature/preview3-setup-screen-consent]
+    paths:
+      - '.github/workflows/publish-parentpilot-preview30.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require the exact successful tested Preview 30 build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run=39634552182
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .status)" = completed
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .conclusion)" = success
+          test "$(gh api "repos/$repo/actions/runs/$run" --jq .head_sha)" = 162de14a6ffa6c1ba29633a9664437d8c3ff93fa
+
+      - name: Retrieve and check the exact installable DEB
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming publish
+          gh run download 39634552182 --repo "$GITHUB_REPOSITORY" \
+            --name ParentPilot-Debian-XFCE-DEB-v0.5.0-preview30 \
+            --dir incoming
+          deb='incoming/parentpilot_0.5.0~preview30_all.deb'
+          test -s "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = parentpilot
+          test "$(dpkg-deb -f "$deb" Version)" = '0.5.0~preview30'
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/files.txt"
+          grep -F '/usr/lib/parentpilot/android_download.py' "$RUNNER_TEMP/files.txt"
+          grep -F '/usr/lib/parentpilot/control_centre.py' "$RUNNER_TEMP/files.txt"
+          grep -F '/usr/lib/parentpilot/update_install.py' "$RUNNER_TEMP/files.txt"
+          cp "$deb" publish/parentpilot_0.5.0.preview30_all.deb
+          (cd publish && sha256sum *.deb > SHA256SUMS.txt)
+
+      - name: Create preview notes
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## ParentPilot Linux Preview 30 — Share the Android Parent App
+
+          This development preview adds an **Install Android parent app** section to the adult ParentPilot Control Centre Home tab.
+
+          - Select **Show QR code** to display a large camera-scannable code that downloads the permanently signed ParentPilot Android APK from its verified GitHub Release.
+          - Includes **Open APK download** and **Copy download link** buttons.
+          - The QR renders offline using built-in Tkinter (no extra QR or image package).
+          - The URL is deliberately pinned to the official signed Android v7 APK from Preview 8. Do not use temporary or unsigned debug APKs.
+          - The QR contains a public download URL, **not** the private laptop IP, parent PIN, certificate, or any family data.
+          - The QR button appears only in the adult Control Centre; no child desktop or screen-time restrictions are changed.
+
+          **To upgrade an existing Linux laptop:** From the adult account open ParentPilot Control Centre → Updates, select **Preview**, check for updates and approve Preview 30. The existing updater creates a protected backup before installing the new package. Child settings, parent PIN, existing accounts, allowance and saved pictures are preserved.
+
+          After installation, open the adult Control Centre **Home** tab and click **Show QR code**. On the phone, scan with the camera, download the APK, then approve installation using Android's system prompts. Android 8+ is required. The phone still needs the normal ParentPilot pairing and six-digit parent PIN.
+
+          The integrated Control Centre popup and QR encoding were tested in automated 800×480 and 1024×600 virtual X11 screens. Test the QR with a real phone before relying on it for other families.
+          EOF
+
+      - name: Publish Preview 30 without overwriting existing releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.5.0-preview30 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Preview 30 is already published; refusing to replace it."
+            exit 1
+          fi
+          gh release create v0.5.0-preview30 \
+            publish/parentpilot_0.5.0.preview30_all.deb \
+            publish/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 162de14a6ffa6c1ba29633a9664437d8c3ff93fa \
+            --title 'ParentPilot Linux Preview 30 - Signed Android APK QR Code' \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --prerelease
+          gh release view v0.5.0-preview30 --repo "$GITHUB_REPOSITORY" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url, prerelease:.isPrerelease, assets:[.assets[].name]}'
